@@ -1,0 +1,17 @@
+[project]
+name = "rhescn"
+version = "0.1.0"
+description = "Add a short description here"
+authors = [{ name = "Nima Shoghi", email = "nimashoghi@gmail.com" }]
+requires-python = ">= 3.11"
+
+[tool.pyright]
+typeCheckingMode = "standard"
+deprecateTypingAliases = true
+strictListInference = true
+strictDictionaryInference = true
+strictSetInference = true
+reportPrivateImportUsage = false
+
+[tool.ruff.lint]
+ignore = ["F722", "F821", "E731", "E741"]
