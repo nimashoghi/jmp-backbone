@@ -210,7 +210,7 @@ class _Rank2DecompositionEdgeBlock(nn.Module):
             "b (three1 three2) -> b three1 three2",
             three1=3,
             three2=3,
-        )
+        ).contiguous()
 
         return stress
 

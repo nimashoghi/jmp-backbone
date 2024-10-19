@@ -67,7 +67,10 @@ class MPTrjAlexOMAT24DataModuleConfig(C.Config):
 
 
 def _load_dataset(
-    config: DatasetConfig | None, split: str, subsample: int | None = None
+    data_config: MPTrjAlexOMAT24DataModuleConfig,
+    config: DatasetConfig | None,
+    split: str,
+    subsample: int | None = None,
 ):
     if not config:
         return None
@@ -83,6 +86,14 @@ def _load_dataset(
     assert isinstance(
         dataset, datasets.Dataset
     ), f"Expected a `datasets.Dataset` but got {type(dataset)}"
+
+    # Rename the "num_atoms" column to "natoms"
+    if "num_atoms" in dataset.column_names:
+        dataset = dataset.rename_column("num_atoms", "natoms")
+
+    # Filter small systems
+    if data_config.filter_small_systems:
+        dataset = dataset.filter(lambda natoms: natoms >= 4, input_columns=["natoms"])
 
     if subsample is not None:
         dataset = dataset.shuffle(seed=42).select(range(subsample))
@@ -108,13 +119,22 @@ class MPTrjAlexOMAT24Dataset(Dataset, nt.data.balanced_batch_sampler.DatasetWith
             subsample = self.data_config.subsample_val
 
         self.mptrj = _load_dataset(
-            self.data_config.mptrj, split=split, subsample=subsample
+            self.data_config,
+            self.data_config.mptrj,
+            split=split,
+            subsample=subsample,
         )
         self.salex = _load_dataset(
-            self.data_config.salex, split=split, subsample=subsample
+            self.data_config,
+            self.data_config.salex,
+            split=split,
+            subsample=subsample,
         )
         self.omat24 = _load_dataset(
-            self.data_config.omat24, split=split, subsample=subsample
+            self.data_config,
+            self.data_config.omat24,
+            split=split,
+            subsample=subsample,
         )
 
         self.reference = None
@@ -123,20 +143,20 @@ class MPTrjAlexOMAT24Dataset(Dataset, nt.data.balanced_batch_sampler.DatasetWith
 
     @staticmethod
     def ensure_downloaded(data_config: MPTrjAlexOMAT24DataModuleConfig):
-        _ = _load_dataset(data_config.mptrj, split="train")
-        _ = _load_dataset(data_config.mptrj, split="val")
+        _ = _load_dataset(data_config, data_config.mptrj, split="train")
+        _ = _load_dataset(data_config, data_config.mptrj, split="val")
 
-        _ = _load_dataset(data_config.salex, split="train")
-        _ = _load_dataset(data_config.salex, split="val")
+        _ = _load_dataset(data_config, data_config.salex, split="train")
+        _ = _load_dataset(data_config, data_config.salex, split="val")
 
-        _ = _load_dataset(data_config.omat24, split="train")
-        _ = _load_dataset(data_config.omat24, split="val")
+        _ = _load_dataset(data_config, data_config.omat24, split="train")
+        _ = _load_dataset(data_config, data_config.omat24, split="val")
 
     @functools.cached_property
     def num_atoms(self):
         mptrj_natoms = self.mptrj["num_atoms"] if self.mptrj is not None else []
         salex_natoms = self.salex["natoms"] if self.salex is not None else []
-        omat24_natoms = self.omat24["num_atoms"] if self.omat24 is not None else []
+        omat24_natoms = self.omat24["natoms"] if self.omat24 is not None else []
 
         return np.concatenate([mptrj_natoms, salex_natoms, omat24_natoms], axis=0)
 
@@ -161,7 +181,7 @@ class MPTrjAlexOMAT24Dataset(Dataset, nt.data.balanced_batch_sampler.DatasetWith
                     {
                         "pos": data_dict["positions"],
                         "atomic_numbers": data_dict["numbers"].long(),
-                        "natoms": data_dict["num_atoms"],
+                        "natoms": data_dict["natoms"].long(),
                         "cell": data_dict["cell"].view(1, 3, 3),
                         "y": data_dict["corrected_total_energy"],
                         "force": data_dict["forces"],
@@ -177,7 +197,7 @@ class MPTrjAlexOMAT24Dataset(Dataset, nt.data.balanced_batch_sampler.DatasetWith
                     {
                         "pos": data_dict["pos"],
                         "atomic_numbers": data_dict["atomic_numbers"].long(),
-                        "natoms": data_dict["natoms"],
+                        "natoms": data_dict["natoms"].long(),
                         "tags": data_dict["tags"].long(),
                         "fixed": data_dict["fixed"].to(torch.bool),
                         "cell": data_dict["cell"].view(1, 3, 3),
@@ -195,7 +215,7 @@ class MPTrjAlexOMAT24Dataset(Dataset, nt.data.balanced_batch_sampler.DatasetWith
                     {
                         "pos": data_dict["pos"],
                         "atomic_numbers": data_dict["atomic_numbers"].long(),
-                        "natoms": data_dict["natoms"],
+                        "natoms": data_dict["natoms"].long(),
                         "tags": data_dict["tags"].long(),
                         "fixed": data_dict["fixed"].to(torch.bool),
                         "cell": data_dict["cell"].view(1, 3, 3),
@@ -210,10 +230,6 @@ class MPTrjAlexOMAT24Dataset(Dataset, nt.data.balanced_batch_sampler.DatasetWith
 
     def __getitem__(self, index: int):
         data = self._get_data(index)
-
-        # Filter out small systems
-        if self.data_config.filter_small_systems and data.atomic_numbers.size(0) < 4:
-            return self[(index + 1) % len(self)]
 
         # Basic stuff that has to be set
         if "tags" not in data:
