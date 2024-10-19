@@ -1,4 +1,5 @@
 import functools
+from pathlib import Path
 from typing import Literal
 
 import datasets
@@ -11,6 +12,14 @@ from torch_geometric.data import Batch, Data
 from typing_extensions import override
 
 
+class DatasetConfig(C.Config):
+    hf_name: str
+    """Name of the Hugging Face dataset."""
+
+    local_path: str | Path | None = None
+    """Path to the local dataset."""
+
+
 class MPTrjAlexOMAT24DataModuleConfig(C.Config):
     name: Literal["mptrj_alex_omat24"] = "mptrj_alex_omat24"
 
@@ -20,13 +29,13 @@ class MPTrjAlexOMAT24DataModuleConfig(C.Config):
     num_workers: int
     """Number of workers for the data loader."""
 
-    mptrj: bool = True
+    mptrj: DatasetConfig | None = DatasetConfig(hf_name="nimashoghi/mptrj")
     """Whether to include the MPTrj dataset."""
 
-    salex: bool = True
+    salex: DatasetConfig | None = DatasetConfig(hf_name="nimashoghi/salex")
     """Whether to include the SAlEx dataset."""
 
-    omat24: bool = True
+    omat24: DatasetConfig | None = DatasetConfig(hf_name="nimashoghi/omat24")
     """Whether to include the OMAT24 dataset."""
 
     pin_memory: bool = True
@@ -43,15 +52,19 @@ class MPTrjAlexOMAT24DataModuleConfig(C.Config):
 
 
 def _load_dataset(
-    name: str,
-    enable: bool,
-    split: str,
-    subsample: int | None = None,
+    config: DatasetConfig | None, split: str, subsample: int | None = None
 ):
-    if not enable:
+    if config is None:
         return None
 
-    dataset = datasets.load_dataset(name, split=split)
+    if config.local_path is not None:
+        dataset = datasets.load_from_disk(str(config.local_path))
+        assert isinstance(
+            dataset, datasets.DatasetDict
+        ), f"Expected a `datasets.DatasetDict` but got {type(dataset)}"
+        dataset = dataset[split]
+    else:
+        dataset = datasets.load_dataset(config.hf_name, split=split)
     assert isinstance(
         dataset, datasets.Dataset
     ), f"Expected a `datasets.Dataset` but got {type(dataset)}"
@@ -80,22 +93,13 @@ class MPTrjAlexOMAT24Dataset(Dataset, nt.data.balanced_batch_sampler.DatasetWith
             subsample = self.data_config.subsample_val
 
         self.mptrj = _load_dataset(
-            "nimashoghi/mptrj",
-            self.data_config.mptrj,
-            split=split,
-            subsample=subsample,
+            self.data_config.mptrj, split=split, subsample=subsample
         )
         self.salex = _load_dataset(
-            "nimashoghi/salex",
-            self.data_config.salex,
-            split=split,
-            subsample=subsample,
+            self.data_config.salex, split=split, subsample=subsample
         )
         self.omat24 = _load_dataset(
-            "nimashoghi/omat24",
-            self.data_config.omat24,
-            split=split,
-            subsample=subsample,
+            self.data_config.omat24, split=split, subsample=subsample
         )
 
         self.reference = None
@@ -104,14 +108,14 @@ class MPTrjAlexOMAT24Dataset(Dataset, nt.data.balanced_batch_sampler.DatasetWith
 
     @staticmethod
     def ensure_downloaded(data_config: MPTrjAlexOMAT24DataModuleConfig):
-        _ = _load_dataset("nimashoghi/mptrj", data_config.mptrj, split="train")
-        _ = _load_dataset("nimashoghi/mptrj", data_config.mptrj, split="val")
+        _ = _load_dataset(data_config.mptrj, split="train")
+        _ = _load_dataset(data_config.mptrj, split="val")
 
-        _ = _load_dataset("nimashoghi/salex", data_config.salex, split="train")
-        _ = _load_dataset("nimashoghi/salex", data_config.salex, split="val")
+        _ = _load_dataset(data_config.salex, split="train")
+        _ = _load_dataset(data_config.salex, split="val")
 
-        _ = _load_dataset("nimashoghi/omat24", data_config.omat24, split="train")
-        _ = _load_dataset("nimashoghi/omat24", data_config.omat24, split="val")
+        _ = _load_dataset(data_config.omat24, split="train")
+        _ = _load_dataset(data_config.omat24, split="val")
 
     @functools.cached_property
     def num_atoms(self):
