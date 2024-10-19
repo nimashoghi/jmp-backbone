@@ -1,0 +1,257 @@
+import functools
+from typing import Literal
+
+import datasets
+import nshconfig as C
+import nshtrainer as nt
+import numpy as np
+import torch
+from torch.utils.data import DataLoader, Dataset
+from torch_geometric.data import Batch, Data
+from typing_extensions import override
+
+
+class MPTrjAlexOMAT24DataModuleConfig(C.Config):
+    name: Literal["mptrj_alex_omat24"] = "mptrj_alex_omat24"
+
+    batch_size: int
+    """Batch size."""
+
+    num_workers: int
+    """Number of workers for the data loader."""
+
+    mptrj: bool = True
+    """Whether to include the MPTrj dataset."""
+
+    salex: bool = True
+    """Whether to include the SAlEx dataset."""
+
+    omat24: bool = True
+    """Whether to include the OMAT24 dataset."""
+
+    pin_memory: bool = True
+    """Whether to pin memory in the data loader."""
+
+    reference: list[float] | None = None
+    """Atomic energy reference values."""
+
+    filter_small_systems: bool = True
+    """Whether to filter out small systems (less than 4 atoms)."""
+
+    subsample_val: int | None = 10_000
+    """If not `None`, subsample each validation dataset to this number of samples (if the dataset is larger)."""
+
+
+def _load_dataset(
+    name: str,
+    enable: bool,
+    split: str,
+    subsample: int | None = None,
+):
+    if not enable:
+        return None
+
+    dataset = datasets.load_dataset(name, split=split)
+    assert isinstance(
+        dataset, datasets.Dataset
+    ), f"Expected a `datasets.Dataset` but got {type(dataset)}"
+
+    if subsample is not None:
+        dataset = dataset.shuffle(seed=42).select(range(subsample))
+
+    dataset.set_format("torch")
+    return dataset
+
+
+class MPTrjAlexOMAT24Dataset(Dataset, nt.data.balanced_batch_sampler.DatasetWithSizes):
+    @override
+    def __init__(
+        self,
+        data_config: MPTrjAlexOMAT24DataModuleConfig,
+        split: Literal["train", "val"],
+    ):
+        super().__init__()
+
+        self.data_config = data_config
+        del data_config
+
+        subsample = None
+        if split == "val":
+            subsample = self.data_config.subsample_val
+
+        self.mptrj = _load_dataset(
+            "nimashoghi/mptrj",
+            self.data_config.mptrj,
+            split=split,
+            subsample=subsample,
+        )
+        self.salex = _load_dataset(
+            "nimashoghi/salex",
+            self.data_config.salex,
+            split=split,
+            subsample=subsample,
+        )
+        self.omat24 = _load_dataset(
+            "nimashoghi/omat24",
+            self.data_config.omat24,
+            split=split,
+            subsample=subsample,
+        )
+
+        self.reference = None
+        if self.data_config.reference is not None:
+            self.reference = torch.tensor(self.data_config.reference, dtype=torch.float)
+
+    @staticmethod
+    def ensure_downloaded(data_config: MPTrjAlexOMAT24DataModuleConfig):
+        _ = _load_dataset("nimashoghi/mptrj", data_config.mptrj, split="train")
+        _ = _load_dataset("nimashoghi/mptrj", data_config.mptrj, split="val")
+
+        _ = _load_dataset("nimashoghi/salex", data_config.salex, split="train")
+        _ = _load_dataset("nimashoghi/salex", data_config.salex, split="val")
+
+        _ = _load_dataset("nimashoghi/omat24", data_config.omat24, split="train")
+        _ = _load_dataset("nimashoghi/omat24", data_config.omat24, split="val")
+
+    @functools.cached_property
+    def num_atoms(self):
+        mptrj_natoms = self.mptrj["num_atoms"] if self.mptrj is not None else []
+        salex_natoms = self.salex["natoms"] if self.salex is not None else []
+        omat24_natoms = self.omat24["num_atoms"] if self.omat24 is not None else []
+
+        return np.concatenate([mptrj_natoms, salex_natoms, omat24_natoms], axis=0)
+
+    def data_sizes(self, indices: list[int]) -> np.ndarray:
+        return self.num_atoms[indices]
+
+    def __len__(self):
+        total_len = 0
+        if self.mptrj is not None:
+            total_len += len(self.mptrj)
+        if self.salex is not None:
+            total_len += len(self.salex)
+        if self.omat24 is not None:
+            total_len += len(self.omat24)
+        return total_len
+
+    def _get_data(self, index: int):
+        if self.mptrj is not None:
+            if index < len(self.mptrj):
+                data_dict: dict[str, torch.Tensor] = self.mptrj[index]
+                return Data.from_dict(
+                    {
+                        "pos": data_dict["positions"],
+                        "atomic_numbers": data_dict["numbers"].long(),
+                        "natoms": data_dict["num_atoms"],
+                        "cell": data_dict["cell"].view(1, 3, 3),
+                        "y": data_dict["corrected_total_energy"],
+                        "force": data_dict["forces"],
+                        "stress": data_dict["stress"].view(1, 3, 3),
+                    }
+                )
+            index -= len(self.mptrj)
+
+        if self.salex is not None:
+            if index < len(self.salex):
+                data_dict: dict[str, torch.Tensor] = self.salex[index]
+                return Data.from_dict(
+                    {
+                        "pos": data_dict["pos"],
+                        "atomic_numbers": data_dict["atomic_numbers"].long(),
+                        "natoms": data_dict["natoms"],
+                        "tags": data_dict["tags"].long(),
+                        "fixed": data_dict["fixed"].to(torch.bool),
+                        "cell": data_dict["cell"].view(1, 3, 3),
+                        "y": data_dict["energy"],
+                        "force": data_dict["forces"],
+                        "stress": data_dict["stress"].view(1, 3, 3),
+                    }
+                )
+            index -= len(self.salex)
+
+        if self.omat24 is not None:
+            if index < len(self.omat24):
+                data_dict: dict[str, torch.Tensor] = self.omat24[index]
+                return Data.from_dict(
+                    {
+                        "pos": data_dict["pos"],
+                        "atomic_numbers": data_dict["atomic_numbers"].long(),
+                        "natoms": data_dict["natoms"],
+                        "tags": data_dict["tags"].long(),
+                        "fixed": data_dict["fixed"].to(torch.bool),
+                        "cell": data_dict["cell"].view(1, 3, 3),
+                        "y": data_dict["energy"],
+                        "force": data_dict["forces"],
+                        "stress": data_dict["stress"].view(1, 3, 3),
+                    }
+                )
+            index -= len(self.omat24)
+
+        raise IndexError(f"Index {index} out of bounds")
+
+    def __getitem__(self, index: int):
+        data = self._get_data(index)
+
+        # Filter out small systems
+        if self.data_config.filter_small_systems and data.atomic_numbers.size(0) < 4:
+            return self[(index + 1) % len(self)]
+
+        # Basic stuff that has to be set
+        if "tags" not in data:
+            data.tags = torch.full_like(data.atomic_numbers, 2, dtype=torch.long)
+        if "fixed" not in data:
+            data.fixed = torch.zeros_like(data.atomic_numbers, dtype=torch.bool)
+
+        # Apply reference
+        if self.reference is not None:
+            data.y = data.y - self.reference[data.atomic_numbers].sum()
+
+        return data
+
+
+class MPTrjAlexOMAT24DataModule(nt.LightningDataModuleBase):
+    @override
+    def __init__(self, config: MPTrjAlexOMAT24DataModuleConfig):
+        super().__init__()
+
+        self.config = config
+        del config
+
+    @override
+    def prepare_data(self):
+        super().prepare_data()
+
+        # Make sure all datasets are downloaded
+        MPTrjAlexOMAT24Dataset.ensure_downloaded(self.config)
+
+    @functools.cache
+    def _dataset(self, split: Literal["train", "val"]):
+        return MPTrjAlexOMAT24Dataset(self.config, split=split)
+
+    @staticmethod
+    def _collate_fn(data_list: list[Data]):
+        return Batch.from_data_list(data_list)
+
+    @override
+    def train_dataloader(self):
+        dl = DataLoader(
+            self._dataset("train"),
+            batch_size=self.config.batch_size,
+            num_workers=self.config.num_workers,
+            pin_memory=self.config.pin_memory,
+            shuffle=True,
+            collate_fn=self._collate_fn,
+        )
+        return dl
+
+    @override
+    def val_dataloader(self):
+        dl = DataLoader(
+            self._dataset("val"),
+            batch_size=self.config.batch_size,
+            num_workers=self.config.num_workers,
+            pin_memory=self.config.pin_memory,
+            shuffle=False,
+            collate_fn=self._collate_fn,
+        )
+        return dl

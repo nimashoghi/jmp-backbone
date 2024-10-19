@@ -6,6 +6,8 @@ This source code is licensed under the license found in the
 LICENSE file in the root directory of this source tree.
 """
 
+import logging
+from pathlib import Path
 from typing import Any, TypedDict
 
 import torch
@@ -30,6 +32,8 @@ from .utils import (
     inner_product_clamped,
     repeat_blocks,
 )
+
+log = logging.getLogger(__name__)
 
 
 class GOCBackboneOutput(TypedDict):
@@ -774,4 +778,71 @@ class GemNetOCBackbone(nn.Module):
         return out
 
     def load_backbone_state_dict(self, state_dict: dict[str, Any]):
-        raise NotImplementedError
+        # Dump any state that is not backbone or embedding related.
+        # This would be the pre-training output heads and
+        #   the metric states that are stored in the state dict.
+        state_dict_clean: dict[str, Any] = {}
+        removed_keys: list[str] = []
+        for k, v in state_dict.items():
+            if k.startswith("backbone.") or k.startswith("embedding."):
+                state_dict_clean[k] = v
+            else:
+                removed_keys.append(k)
+        state_dict = state_dict_clean
+
+        if removed_keys:
+            log.info(
+                "Removed the following unnecessary state dict keys "
+                f"from the checkpoint: {removed_keys}"
+            )
+
+        # Previously, the embedding used to be separate from the backbone.
+        # However, now it is part of the backbone (as it's just simpler that way).
+        # So we need to move the embedding weights to the correct place.
+        embedding_weight = state_dict.pop("embedding.atom_embedding.weight")
+        state_dict["embedding.weight"] = embedding_weight
+
+        # Remove the `backbone.` prefix from the keys.
+        state_dict = {
+            (k[len("backbone.") :] if k.startswith("backbone.") else k): v
+            for k, v in state_dict.items()
+        }
+
+        # Load the state dict
+        return self.load_state_dict(state_dict)
+
+    @classmethod
+    def from_pretrained_ckpt(cls, path: str | Path):
+        ckpt = torch.load(path, map_location="cpu")
+
+        config: dict[str, Any] = ckpt["hyper_parameters"]["backbone"]
+        # Patch the paths
+        if (
+            config["scale_file"]
+            == "/private/home/bmwood/ocp_results/fm_lit/fm/fm/pretrain_large_runs/scale_files/base.pt"
+        ):
+            # The scale file should be: {path to the directory containing this python file}/scale_files/small.pt
+            config["scale_file"] = str(
+                (Path(__file__).parent / "scale_files" / "small.pt").absolute()
+            )
+        elif (
+            config["scale_file"]
+            == "/private/home/bmwood/ocp_results/fm_lit/fm/fm/pretrain_large_runs/scale_files/large.pt"
+        ):
+            # The scale file should be: {path to the directory containing this python file}/scale_files/large.pt
+            config["scale_file"] = str(
+                (Path(__file__).parent / "scale_files" / "large.pt").absolute()
+            )
+        else:
+            raise ValueError(f"Unknown scale file: {config['scale_file']}")
+
+        # Create the BackboneConfig
+        backbone_config = BackboneConfig.model_validate(config)
+
+        # Create the model
+        model = cls(backbone_config, **config)
+
+        # Load the state dict
+        model.load_backbone_state_dict(ckpt["state_dict"])
+
+        return model

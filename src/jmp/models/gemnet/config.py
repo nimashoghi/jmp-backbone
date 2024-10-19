@@ -6,16 +6,11 @@ This source code is licensed under the license found in the
 LICENSE file in the root directory of this source tree.
 """
 
-from collections.abc import Callable
-from pathlib import Path
-from typing import Any
-
-import torch
-from jmp.lightning import TypedConfig
+import nshconfig as C
 from typing_extensions import override
 
 
-class BackboneConfig(TypedConfig):
+class BackboneConfig(C.Config):
     num_targets: int = 1
     num_spherical: int
     num_radial: int
@@ -70,177 +65,8 @@ class BackboneConfig(TypedConfig):
     dropout: float | None
     edge_dropout: float | None
 
-    @classmethod
-    def base(cls):
-        return cls(
-            num_targets=1,
-            num_spherical=7,
-            num_radial=128,
-            num_blocks=4,
-            emb_size_atom=256,
-            emb_size_edge=512,
-            emb_size_trip_in=64,
-            emb_size_trip_out=64,
-            emb_size_quad_in=32,
-            emb_size_quad_out=32,
-            emb_size_aint_in=64,
-            emb_size_aint_out=64,
-            emb_size_rbf=16,
-            emb_size_cbf=16,
-            emb_size_sbf=32,
-            num_before_skip=2,
-            num_after_skip=2,
-            num_concat=1,
-            num_atom=3,
-            num_output_afteratom=3,
-            num_atom_emb_layers=2,
-            num_global_out_layers=2,
-            regress_forces=True,
-            regress_energy=True,
-            direct_forces=True,
-            use_pbc=True,
-            scale_backprop_forces=False,
-            rbf={"name": "gaussian"},
-            rbf_spherical=None,
-            envelope={"name": "polynomial", "exponent": 5},
-            cbf={"name": "spherical_harmonics"},
-            sbf={"name": "legendre_outer"},
-            extensive=True,
-            forces_coupled=False,
-            activation="scaled_silu",
-            quad_interaction=True,
-            atom_edge_interaction=True,
-            edge_atom_interaction=True,
-            atom_interaction=True,
-            scale_basis=False,
-            qint_tags=[1, 2],
-            num_elements=120,
-            otf_graph=False,
-            scale_file=None,
-            absolute_rbf_cutoff=12.0,
-            dropout=None,
-            edge_dropout=None,
-        )
 
-    @classmethod
-    def download_base(cls, **kwargs):
-        """Load GemNetOCBackbone config from github"""
-        import requests
-        import yaml
-
-        # read config from url
-        response = requests.get(
-            "https://raw.githubusercontent.com/Open-Catalyst-Project/ocp/main/configs/s2ef/all/gemnet/gemnet-oc.yml"
-        )
-        config_dict = yaml.safe_load(response.text)
-
-        model_config: dict = {**config_dict["model"]}
-        _ = model_config.pop("name", None)
-        _ = model_config.pop("scale_file", None)
-
-        for key in list(model_config.keys()):
-            if any([key.startswith(prefix) for prefix in ["cutoff", "max_neighbors"]]):
-                _ = model_config.pop(key)
-
-        model_config.update(kwargs)
-        config = cls.from_dict(model_config)
-        return config
-
-    @classmethod
-    def large(cls):
-        return cls(
-            **{
-                "num_targets": 1,
-                "num_spherical": 7,
-                "num_radial": 128,
-                "num_blocks": 6,
-                "emb_size_atom": 256,
-                "emb_size_edge": 1024,
-                "emb_size_trip_in": 64,
-                "emb_size_trip_out": 128,
-                "emb_size_quad_in": 64,
-                "emb_size_quad_out": 32,
-                "emb_size_aint_in": 64,
-                "emb_size_aint_out": 64,
-                "emb_size_rbf": 32,
-                "emb_size_cbf": 16,
-                "emb_size_sbf": 64,
-                "num_before_skip": 2,
-                "num_after_skip": 2,
-                "num_concat": 4,
-                "num_atom": 3,
-                "num_output_afteratom": 3,
-                "num_atom_emb_layers": 2,
-                "num_global_out_layers": 2,
-                "regress_forces": True,
-                "regress_energy": True,
-                "direct_forces": True,
-                "use_pbc": True,
-                "scale_backprop_forces": False,
-                "rbf": {"name": "gaussian"},
-                "rbf_spherical": None,
-                "envelope": {"name": "polynomial", "exponent": 5},
-                "cbf": {"name": "spherical_harmonics"},
-                "sbf": {"name": "legendre_outer"},
-                "extensive": True,
-                "forces_coupled": False,
-                "activation": "scaled_silu",
-                "quad_interaction": True,
-                "atom_edge_interaction": True,
-                "edge_atom_interaction": True,
-                "atom_interaction": True,
-                "scale_basis": False,
-                "qint_tags": [1, 2],
-                "num_elements": 120,
-                "otf_graph": False,
-                "scale_file": None,
-                "learnable_rbf": False,
-                "learnable_rbf_stds": False,
-                "unique_basis_per_layer": False,
-            },
-            absolute_rbf_cutoff=12.0,
-            dropout=None,
-            edge_dropout=None,
-        )
-
-    @classmethod
-    def download_large(cls, **kwargs):
-        """Load GemNetOCBackbone config from github"""
-        import requests
-        import yaml
-
-        # read config from url
-        response = requests.get(
-            "https://raw.githubusercontent.com/Open-Catalyst-Project/ocp/main/configs/s2ef/all/gemnet/gemnet-oc-large.yml"
-        )
-        config_dict = yaml.safe_load(response.text)
-
-        model_config: dict = {**config_dict["model"]}
-        _ = model_config.pop("name", None)
-        _ = model_config.pop("scale_file", None)
-
-        for key in list(model_config.keys()):
-            if any([key.startswith(prefix) for prefix in ["cutoff", "max_neighbors"]]):
-                _ = model_config.pop(key)
-
-        model_config.update(kwargs)
-        config = cls.from_dict(model_config)
-        return config
-
-    @classmethod
-    def from_ckpt(
-        cls,
-        ckpt_path: Path | str,
-        transform: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
-    ):
-        ckpt = torch.load(ckpt_path, map_location="cpu")
-        config = ckpt["config"]
-        if transform is not None:
-            config = transform(config)
-        return cls(**config)
-
-
-class BasesConfig(TypedConfig):
+class BasesConfig(C.Config):
     emb_size_rbf: int
     emb_size_cbf: int
     emb_size_sbf: int
