@@ -9,7 +9,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
 from torch_geometric.data import Batch, Data
-from typing_extensions import override
+from typing_extensions import assert_never, override
 
 
 class DatasetConfig(C.Config):
@@ -49,6 +49,15 @@ class MPTrjAlexOMAT24DataModuleConfig(C.Config):
 
     subsample_val: int | None = 10_000
     """If not `None`, subsample each validation dataset to this number of samples (if the dataset is larger)."""
+
+    def with_linear_reference_(self, reference: Literal["mptrj-salex"]):
+        match reference:
+            case "mptrj-salex":
+                from .linref import PRECOMPUTED_MPTRJ_ALEX
+
+                self.reference = PRECOMPUTED_MPTRJ_ALEX
+            case _:
+                assert_never(reference)
 
 
 def _load_dataset(
