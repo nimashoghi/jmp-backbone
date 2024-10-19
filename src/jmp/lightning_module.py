@@ -6,6 +6,7 @@ import nshconfig as C
 import nshconfig_extra as CE
 import nshtrainer as nt
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from lightning.pytorch.utilities.types import OptimizerLRSchedulerConfig
 from torch_geometric.data import Batch
@@ -63,20 +64,33 @@ class Module(nt.LightningModuleBase[Config]):
         self.backbone = GemNetOCBackbone.from_pretrained_ckpt(
             self.config.pretrained_ckpt.resolve()
         )
+        d_model = self.backbone.config.emb_size_atom
+        d_model_edge = self.backbone.config.emb_size_edge
+        match self.backbone.config.activation:
+            case "scaled_silu" | "scaled_swish":
+                from .models.gemnet.layers.base_layers import ScaledSiLU
+
+                activation_cls = ScaledSiLU
+            case "silu" | "swish":
+                activation_cls = nn.SiLU
+            case _:
+                raise ValueError(
+                    f"Unknown activation: {self.backbone.config.activation}"
+                )
 
         # Output heads
         self.energy_head = self.config.targets.energy.create_model(
-            d_model=self.backbone.d_model,
-            d_model_edge=self.backbone.d_model_edge,
-            activation_cls=torch.nn.ReLU,
+            d_model=d_model,
+            d_model_edge=d_model_edge,
+            activation_cls=activation_cls,
         )
         self.force_head = self.config.targets.force.create_model(
-            d_model_edge=self.backbone.d_model_edge,
-            activation_cls=torch.nn.ReLU,
+            d_model_edge=d_model_edge,
+            activation_cls=activation_cls,
         )
         self.stress_head = self.config.targets.stress.create_model(
-            d_model_edge=self.backbone.d_model_edge,
-            activation_cls=torch.nn.ReLU,
+            d_model_edge=d_model_edge,
+            activation_cls=activation_cls,
         )
 
         # Metrics

@@ -13,11 +13,17 @@ from typing_extensions import assert_never, override
 
 
 class DatasetConfig(C.Config):
+    enabled: bool = True
+    """Whether to include the dataset."""
+
     hf_name: str
     """Name of the Hugging Face dataset."""
 
     local_path: str | Path | None = None
     """Path to the local dataset."""
+
+    def __bool__(self):
+        return self.enabled
 
 
 class MPTrjAlexOMAT24DataModuleConfig(C.Config):
@@ -29,13 +35,13 @@ class MPTrjAlexOMAT24DataModuleConfig(C.Config):
     num_workers: int
     """Number of workers for the data loader."""
 
-    mptrj: DatasetConfig | None = DatasetConfig(hf_name="nimashoghi/mptrj")
+    mptrj: DatasetConfig = DatasetConfig(hf_name="nimashoghi/mptrj")
     """Whether to include the MPTrj dataset."""
 
-    salex: DatasetConfig | None = DatasetConfig(hf_name="nimashoghi/salex")
+    salex: DatasetConfig = DatasetConfig(hf_name="nimashoghi/salex")
     """Whether to include the SAlEx dataset."""
 
-    omat24: DatasetConfig | None = DatasetConfig(hf_name="nimashoghi/omat24")
+    omat24: DatasetConfig = DatasetConfig(hf_name="nimashoghi/omat24")
     """Whether to include the OMAT24 dataset."""
 
     pin_memory: bool = True
@@ -63,7 +69,7 @@ class MPTrjAlexOMAT24DataModuleConfig(C.Config):
 def _load_dataset(
     config: DatasetConfig | None, split: str, subsample: int | None = None
 ):
-    if config is None:
+    if not config:
         return None
 
     if config.local_path is not None:

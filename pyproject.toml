@@ -1,5 +1,5 @@
 [project]
-name = "rhescn"
+name = "jmp"
 version = "0.1.0"
 description = "Add a short description here"
 authors = [{ name = "Nima Shoghi", email = "nimashoghi@gmail.com" }]
