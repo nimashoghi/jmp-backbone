@@ -13,35 +13,26 @@ from torch_scatter import segment_coo, segment_csr
 
 
 def radius_graph_pbc(
-    data: Batch,
-    radius: float,
-    max_num_neighbors_threshold: int,
-    pbc: list[bool] = [True, True, True],
+    radius,
+    max_num_neighbors_threshold,
+    pos: torch.Tensor,
+    natoms: torch.Tensor,
+    cell: torch.Tensor,
+    enforce_max_neighbors_strictly: bool = False,
+    pbc=None,
 ):
-    device = data.pos.device
-
-    if isinstance(data.natoms, int):
-        data.natoms = torch.tensor([data.natoms], device=device)
-
-    batch_size = len(data.natoms)
-
-    if hasattr(data, "pbc"):
-        data.pbc = torch.atleast_2d(data.pbc)
-        for i in range(3):
-            if not torch.any(data.pbc[:, i]).item():
-                pbc[i] = False
-            elif torch.all(data.pbc[:, i]).item():
-                pbc[i] = True
-            else:
-                raise RuntimeError(
-                    "Different structures in the batch have different PBC configurations. This is not currently supported."
-                )
+    if pbc is None:
+        pbc = [True, True, True]
+    device = pos.device
+    if natoms.ndim == 0:
+        natoms = natoms.unsqueeze(0)
+    batch_size = len(natoms)
 
     # position of the atoms
-    atom_pos = data.pos
+    atom_pos = pos
 
     # Before computing the pairwise distances between atoms, first create a list of atom indices to compare for the entire batch
-    num_atoms_per_image = data.natoms
+    num_atoms_per_image = natoms
     num_atoms_per_image_sqr = (num_atoms_per_image**2).long()
 
     # index offset between images
@@ -83,35 +74,35 @@ def radius_graph_pbc(
     # (a2 x a3) / V is also the reciprocal primitive vector
     # (crystallographer's definition).
 
-    cross_a2a3 = torch.cross(data.cell[:, 1], data.cell[:, 2], dim=-1)
-    cell_vol = torch.sum(data.cell[:, 0] * cross_a2a3, dim=-1, keepdim=True)
+    cross_a2a3 = torch.cross(cell[:, 1], cell[:, 2], dim=-1)
+    cell_vol = torch.sum(cell[:, 0] * cross_a2a3, dim=-1, keepdim=True)
 
     if pbc[0]:
         inv_min_dist_a1 = torch.norm(cross_a2a3 / cell_vol, p=2, dim=-1)
         rep_a1 = torch.ceil(radius * inv_min_dist_a1)
     else:
-        rep_a1 = data.cell.new_zeros(1)
+        rep_a1 = cell.new_zeros(1)
 
     if pbc[1]:
-        cross_a3a1 = torch.cross(data.cell[:, 2], data.cell[:, 0], dim=-1)
+        cross_a3a1 = torch.cross(cell[:, 2], cell[:, 0], dim=-1)
         inv_min_dist_a2 = torch.norm(cross_a3a1 / cell_vol, p=2, dim=-1)
         rep_a2 = torch.ceil(radius * inv_min_dist_a2)
     else:
-        rep_a2 = data.cell.new_zeros(1)
+        rep_a2 = cell.new_zeros(1)
 
     if pbc[2]:
-        cross_a1a2 = torch.cross(data.cell[:, 0], data.cell[:, 1], dim=-1)
+        cross_a1a2 = torch.cross(cell[:, 0], cell[:, 1], dim=-1)
         inv_min_dist_a3 = torch.norm(cross_a1a2 / cell_vol, p=2, dim=-1)
         rep_a3 = torch.ceil(radius * inv_min_dist_a3)
     else:
-        rep_a3 = data.cell.new_zeros(1)
+        rep_a3 = cell.new_zeros(1)
 
     # Take the max over all images for uniformity. This is essentially padding.
     # Note that this can significantly increase the number of computed distances
     # if the required repetitions are very different between images
     # (which they usually are). Changing this to sparse (scatter) operations
     # might be worth the effort if this function becomes a bottleneck.
-    max_rep = [rep_a1.max(), rep_a2.max(), rep_a3.max()]
+    max_rep = [rep_a1.max().item(), rep_a2.max().item(), rep_a3.max().item()]
 
     # Tensor of unit cells
     cells_per_dim = [
@@ -124,7 +115,7 @@ def radius_graph_pbc(
     unit_cell_batch = unit_cell.view(1, 3, num_cells).expand(batch_size, -1, -1)
 
     # Compute the x, y, z positional offsets for each cell in each image
-    data_cell = torch.transpose(data.cell, 1, 2)
+    data_cell = torch.transpose(cell, 1, 2)
     pbc_offsets = torch.bmm(data_cell, unit_cell_batch)
     pbc_offsets_per_atom = torch.repeat_interleave(
         pbc_offsets, num_atoms_per_image_sqr, dim=0
@@ -156,10 +147,11 @@ def radius_graph_pbc(
     atom_distance_sqr = torch.masked_select(atom_distance_sqr, mask)
 
     mask_num_neighbors, num_neighbors_image = get_max_neighbors_mask(
-        natoms=data.natoms,
+        natoms=natoms,
         index=index1,
         atom_distance=atom_distance_sqr,
         max_num_neighbors_threshold=max_num_neighbors_threshold,
+        enforce_max_strictly=enforce_max_neighbors_strictly,
     )
 
     if not torch.all(mask_num_neighbors):
@@ -177,16 +169,28 @@ def radius_graph_pbc(
 
 
 def get_max_neighbors_mask(
-    natoms: torch.Tensor,
-    index: torch.Tensor,
-    atom_distance: torch.Tensor,
-    max_num_neighbors_threshold: int,
+    natoms,
+    index,
+    atom_distance,
+    max_num_neighbors_threshold,
+    degeneracy_tolerance: float = 0.01,
+    enforce_max_strictly: bool = False,
 ):
     """
     Give a mask that filters out edges so that each atom has at most
     `max_num_neighbors_threshold` neighbors.
     Assumes that `index` is sorted.
+
+    Enforcing the max strictly can force the arbitrary choice between
+    degenerate edges. This can lead to undesired behaviors; for
+    example, bulk formation energies which are not invariant to
+    unit cell choice.
+
+    A degeneracy tolerance can help prevent sudden changes in edge
+    existence from small changes in atom position, for example,
+    rounding errors, slab relaxation, temperature, etc.
     """
+
     device = natoms.device
     num_atoms = natoms.sum()
 
@@ -232,13 +236,36 @@ def get_max_neighbors_mask(
 
     # Sort neighboring atoms based on distance
     distance_sort, index_sort = torch.sort(distance_sort, dim=1)
+
     # Select the max_num_neighbors_threshold neighbors that are closest
-    distance_sort = distance_sort[:, :max_num_neighbors_threshold]
-    index_sort = index_sort[:, :max_num_neighbors_threshold]
+    if enforce_max_strictly:
+        distance_sort = distance_sort[:, :max_num_neighbors_threshold]
+        index_sort = index_sort[:, :max_num_neighbors_threshold]
+        max_num_included = max_num_neighbors_threshold
+
+    else:
+        effective_cutoff = (
+            distance_sort[:, max_num_neighbors_threshold] + degeneracy_tolerance
+        )
+        is_included = torch.le(distance_sort.T, effective_cutoff)
+
+        # Set all undesired edges to infinite length to be removed later
+        distance_sort[~is_included.T] = np.inf
+
+        # Subselect tensors for efficiency
+        num_included_per_atom = torch.sum(is_included, dim=0)
+        max_num_included = torch.max(num_included_per_atom)
+        distance_sort = distance_sort[:, :max_num_included]
+        index_sort = index_sort[:, :max_num_included]
+
+        # Recompute the number of neighbors
+        num_neighbors_thresholded = num_neighbors.clamp(max=num_included_per_atom)
+
+        num_neighbors_image = segment_csr(num_neighbors_thresholded, image_indptr)
 
     # Offset index_sort so that it indexes into index
     index_sort = index_sort + index_neighbor_offset.view(-1, 1).expand(
-        -1, max_num_neighbors_threshold
+        -1, max_num_included
     )
     # Remove "unused pairs" with infinite distances
     mask_finite = torch.isfinite(distance_sort)

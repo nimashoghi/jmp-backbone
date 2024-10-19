@@ -1,32 +1,32 @@
-"""
-Copyright (c) Meta Platforms, Inc. and affiliates.
-All rights reserved.
-
-This source code is licensed under the license found in the
-LICENSE file in the root directory of this source tree.
-"""
+from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
-from functools import wraps
-from typing import ParamSpec, TypedDict, cast
+from functools import partial, wraps
+from typing import (
+    TYPE_CHECKING,
+    ParamSpec,
+    Protocol,
+    TypedDict,
+    cast,
+    runtime_checkable,
+)
 
+import nshconfig as C
 import numpy as np
 import torch
+import torch.nn as nn
+from jmppeft.modules.torch_scatter_polyfill import segment_coo
 from torch_geometric.data.batch import Batch
 from torch_geometric.data.data import BaseData
 from torch_geometric.nn import radius_graph
 from torch_geometric.utils import sort_edge_index
-from torch_scatter import segment_coo
-from typing_extensions import NotRequired
+from typing_extensions import NotRequired, override
 
 from .radius_graph import get_pbc_distances, radius_graph_pbc
-from .utils import (
-    get_edge_id,
-    get_max_neighbors_mask,
-    mask_neighbors,
-    repeat_blocks,
-)
+from .utils import get_edge_id, get_max_neighbors_mask, mask_neighbors, repeat_blocks
+
+if TYPE_CHECKING:
+    from .config import BackboneConfig
 
 
 class Graph(TypedDict):
@@ -42,8 +42,7 @@ class Graph(TypedDict):
     id_swap_edge_index: NotRequired[torch.Tensor]  # e
 
 
-@dataclass(frozen=True, kw_only=True)
-class Cutoffs:
+class CutoffsConfig(C.Config):
     main: float
     aeaint: float
     qint: float
@@ -53,9 +52,16 @@ class Cutoffs:
     def from_constant(cls, value: float):
         return cls(main=value, aeaint=value, qint=value, aint=value)
 
+    def __mul__(self, other: float):
+        return self.__class__(
+            main=self.main * other,
+            aeaint=self.aeaint * other,
+            qint=self.qint * other,
+            aint=self.aint * other,
+        )
 
-@dataclass(frozen=True, kw_only=True)
-class MaxNeighbors:
+
+class MaxNeighborsConfig(C.Config):
     main: int
     aeaint: int
     qint: int
@@ -75,6 +81,14 @@ class MaxNeighbors:
             aeaint=int(max_neighbors * 20 / 30),
             qint=int(max_neighbors * 8 / 30),
             aint=int(max_neighbors * 1000 / 30),
+        )
+
+    def __mul__(self, other: int):
+        return self.__class__(
+            main=self.main * other,
+            aeaint=self.aeaint * other,
+            qint=self.qint * other,
+            aint=self.aint * other,
         )
 
 
@@ -222,16 +236,73 @@ def tag_mask(data: BaseData, graph: Graph, *, tags: list[int]):
     return graph
 
 
+def _radius_graph_pbc(
+    radius,
+    max_num_neighbors_threshold,
+    data: BaseData,
+    enforce_max_neighbors_strictly: bool = False,
+    pbc=None,
+    per_graph: bool = False,
+):
+    if not per_graph:
+        return radius_graph_pbc(
+            radius,
+            max_num_neighbors_threshold,
+            data.pos,
+            data.natoms,
+            data.cell,
+            enforce_max_neighbors_strictly=enforce_max_neighbors_strictly,
+            pbc=pbc,
+        )
+
+    assert (
+        ptr := getattr(data, "ptr", None)
+    ) is not None, "`data.ptr` is required for per-graph radius graph"
+    pos: torch.Tensor = data.pos  # n 3
+    cell: torch.Tensor = data.cell  # b 3 3
+    natoms: torch.Tensor = data.natoms  # b
+
+    edge_index, cell_offsets, neighbors = [], [], []
+    atom_index_offset = 0
+    for i in range(ptr.size(0) - 1):
+        pos_i = pos[ptr[i] : ptr[i + 1]]
+        natoms_i = natoms[i]
+        cell_i = cell[i]
+        edge_index_i, cell_offsets_i, neighbors_i = radius_graph_pbc(
+            radius,
+            max_num_neighbors_threshold,
+            pos_i,
+            natoms_i[None],
+            cell_i[None],
+            enforce_max_neighbors_strictly=enforce_max_neighbors_strictly,
+            pbc=pbc,
+        )
+        edge_index.append(edge_index_i + atom_index_offset)
+        cell_offsets.append(cell_offsets_i)
+        neighbors.append(neighbors_i)
+        atom_index_offset += pos_i.shape[0]
+
+    edge_index = torch.cat(edge_index, dim=1)
+    cell_offsets = torch.cat(cell_offsets, dim=0)
+    neighbors = torch.cat(neighbors, dim=0)
+
+    return edge_index, cell_offsets, neighbors
+
+
 def _generate_graph(
     data: BaseData,
     *,
     cutoff: float,
     max_neighbors: int,
     pbc: bool,
+    per_graph: bool = False,
 ):
     if pbc:
-        edge_index, cell_offsets, neighbors = radius_graph_pbc(
-            data, cutoff, max_neighbors
+        edge_index, cell_offsets, neighbors = _radius_graph_pbc(
+            cutoff,
+            max_neighbors,
+            data,
+            per_graph=per_graph,
         )
 
         out = get_pbc_distances(
@@ -283,6 +354,7 @@ def generate_graph(
     symmetrize: bool = False,
     filter_tags: list[int] | None = None,
     sort_edges: bool = False,
+    per_graph: bool = False,
 ):
     (
         edge_index,
@@ -296,6 +368,7 @@ def generate_graph(
         cutoff=cutoff,
         max_neighbors=max_neighbors,
         pbc=pbc,
+        per_graph=per_graph,
     )
     # These vectors actually point in the opposite direction.
     # But we want to use col as idx_t for efficient aggregation.
@@ -308,7 +381,7 @@ def generate_graph(
         "vector": edge_vector,
         "cell_offset": cell_offsets,
         "num_neighbors": num_neighbors,
-        "cutoff": torch.tensor(cutoff, dtype=torch.float, device=data.pos.device),
+        "cutoff": torch.tensor(cutoff, dtype=data.pos.dtype, device=data.pos.device),
         "max_neighbors": torch.tensor(
             max_neighbors, dtype=torch.long, device=data.pos.device
         ),
@@ -421,12 +494,21 @@ def subselect_graph(
 def generate_graphs(
     data: BaseData,
     *,
-    cutoffs: Cutoffs | Callable[[BaseData], Cutoffs],
-    max_neighbors: MaxNeighbors | Callable[[BaseData], MaxNeighbors],
+    cutoffs: CutoffsConfig | Callable[[BaseData], CutoffsConfig],
+    max_neighbors: MaxNeighborsConfig | Callable[[BaseData], MaxNeighborsConfig],
     pbc: bool,
     symmetrize_main: bool = False,
     qint_tags: list[int] | None = [1, 2],
 ):
+    """
+    Data needs the following attributes:
+        - cell
+        - pos
+        - natoms
+        - batch
+        - tags
+    """
+
     if callable(cutoffs):
         cutoffs = cutoffs(data)
     if callable(max_neighbors):
@@ -480,8 +562,8 @@ P = ParamSpec("P")
 
 
 def with_goc_graphs(
-    cutoffs: Cutoffs | Callable[[BaseData], Cutoffs],
-    max_neighbors: MaxNeighbors | Callable[[BaseData], MaxNeighbors],
+    cutoffs: CutoffsConfig | Callable[[BaseData], CutoffsConfig],
+    max_neighbors: MaxNeighborsConfig | Callable[[BaseData], MaxNeighborsConfig],
     pbc: bool,
     symmetrize_main: bool = False,
     qint_tags: list[int] | None = [1, 2],
@@ -554,3 +636,96 @@ def graphs_to_batch(data: BaseData | Batch, graphs: Graphs):
             setattr(data, f"{graph_type}_{key}", value)
 
     return data
+
+
+@runtime_checkable
+class AintGraphTransformProtocol(Protocol):
+    def __call__(self, graph: Graph, training: bool) -> Graph: ...
+
+
+class GraphComputerConfig(C.Config):
+    cutoffs: CutoffsConfig
+    """The cutoff for the radius graph."""
+
+    max_neighbors: MaxNeighborsConfig
+    """The maximum number of neighbors for the radius graph."""
+
+    pbc: bool
+    """Whether to use periodic boundary conditions."""
+
+    per_graph_radius_graph: bool = False
+    """Whether to compute the radius graph per graph."""
+
+
+class GraphComputer(nn.Module):
+    def __init__(
+        self,
+        config: GraphComputerConfig,
+        backbone_config: BackboneConfig,
+        *,
+        process_aint_graph_transform: AintGraphTransformProtocol | None = None,
+    ):
+        super().__init__()
+
+        self.config = config
+        del config
+
+        self.backbone_config = backbone_config
+        del backbone_config
+
+        self._process_aint_graph_transform = process_aint_graph_transform
+
+    @override
+    def forward(
+        self,
+        data: BaseData,
+        # cutoffs: CutoffsConfig,
+        # max_neighbors: MaxNeighborsConfig,
+        # pbc: bool,
+        # training: bool,
+    ):
+        cutoffs = self.config.cutoffs
+        max_neighbors = self.config.max_neighbors
+        pbc = self.config.pbc
+        training = self.training
+
+        aint_graph = generate_graph(
+            data,
+            cutoff=cutoffs.aint,
+            max_neighbors=max_neighbors.aint,
+            pbc=pbc,
+            per_graph=self.config.per_graph_radius_graph,
+        )
+        if self._process_aint_graph_transform is not None:
+            aint_graph = self._process_aint_graph_transform(
+                aint_graph, training=training
+            )
+        subselect = partial(
+            subselect_graph,
+            data,
+            aint_graph,
+            cutoff_orig=cutoffs.aint,
+            max_neighbors_orig=max_neighbors.aint,
+        )
+        main_graph = subselect(cutoffs.main, max_neighbors.main)
+        aeaint_graph = subselect(cutoffs.aeaint, max_neighbors.aeaint)
+        qint_graph = subselect(cutoffs.qint, max_neighbors.qint)
+
+        # We can't do this at the data level: This is because the batch collate_fn doesn't know
+        # that it needs to increment the "id_swap" indices as it collates the data.
+        # So we do this at the graph level (which is done in the GemNetOC `get_graphs_and_indices` method).
+        # main_graph = symmetrize_edges(main_graph, num_atoms=data.pos.shape[0])
+        qint_graph = tag_mask(data, qint_graph, tags=self.backbone_config.qint_tags)
+
+        graphs = {
+            "main": main_graph,
+            "a2a": aint_graph,
+            "a2ee2a": aeaint_graph,
+            "qint": qint_graph,
+        }
+
+        for graph_type, graph in graphs.items():
+            for key, value in graph.items():
+                setattr(data, f"{graph_type}_{key}", value)
+
+        return data

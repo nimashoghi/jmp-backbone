@@ -14,6 +14,7 @@ from typing_extensions import override
 
 from .metrics import ForceFieldMetrics
 from .models.gemnet.backbone import GemNetOCBackbone
+from .models.gemnet.graph import GraphComputer, GraphComputerConfig
 from .nn.energy_head import EnergyTargetConfig
 from .nn.force_head import ForceTargetConfig
 from .nn.stress_head import StressTargetConfig
@@ -39,6 +40,9 @@ class TargetsConfig(C.Config):
 class Config(nt.BaseConfig):
     pretrained_ckpt: CE.CachedPath
     """Path to the pretrained checkpoint."""
+
+    graph_computer: GraphComputerConfig
+    """Graph computer configuration."""
 
     targets: TargetsConfig
     """Targets configuration."""
@@ -91,6 +95,13 @@ class Module(nt.LightningModuleBase[Config]):
         self.stress_head = self.config.targets.stress.create_model(
             d_model_edge=d_model_edge,
             activation_cls=activation_cls,
+        )
+
+        # Graph computer
+        self.graph_computer = GraphComputer(
+            self.config.graph_computer,
+            self.backbone.config,
+            # self._process_aint_graph_transform,
         )
 
         # Metrics
@@ -150,6 +161,9 @@ class Module(nt.LightningModuleBase[Config]):
         return loss
 
     def _common_step(self, data: Batch, metrics: ForceFieldMetrics):
+        # Compute graphs
+        data = self.graph_computer(data)
+
         # Forward pass
         outputs = self(data)
         outputs = cast(Predictions, outputs)
