@@ -25,7 +25,7 @@ from torch_geometric.data import Batch
 from torch_scatter import scatter
 
 from ...lightning_module import Module
-from ..ase_utils import batch_to_atoms
+from ..calculator import batch_to_atoms
 
 ALL_CHANGES: set[str] = {
     "pos",
