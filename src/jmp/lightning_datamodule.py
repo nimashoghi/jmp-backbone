@@ -146,6 +146,8 @@ class MPTrjAlexOMAT24Dataset(Dataset, nt.data.balanced_batch_sampler.DatasetWith
         if self.data_config.reference is not None:
             self.reference = torch.tensor(self.data_config.reference, dtype=torch.float)
             log.critical(f"Using reference: {self.reference}")
+        else:
+            log.critical("No reference provided. Using raw energies.")
 
     @staticmethod
     def ensure_downloaded(data_config: MPTrjAlexOMAT24DataModuleConfig):

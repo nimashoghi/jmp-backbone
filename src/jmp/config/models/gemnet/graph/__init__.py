@@ -19,12 +19,12 @@ else:
             return globals()[name]
         if name == "MaxNeighborsConfig":
             return importlib.import_module("jmp.models.gemnet.graph").MaxNeighborsConfig
+        if name == "CutoffsConfig":
+            return importlib.import_module("jmp.models.gemnet.graph").CutoffsConfig
         if name == "GraphComputerConfig":
             return importlib.import_module(
                 "jmp.models.gemnet.graph"
             ).GraphComputerConfig
-        if name == "CutoffsConfig":
-            return importlib.import_module("jmp.models.gemnet.graph").CutoffsConfig
         raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 # Submodule exports

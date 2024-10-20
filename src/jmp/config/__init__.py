@@ -38,24 +38,24 @@ else:
             return importlib.import_module(
                 "jmp.lightning_datamodule"
             ).MPTrjAlexOMAT24DataModuleConfig
+        if name == "TargetsConfig":
+            return importlib.import_module("jmp.lightning_module").TargetsConfig
         if name == "OptimizationConfig":
             return importlib.import_module("jmp.lightning_module").OptimizationConfig
         if name == "SeparateLRMultiplierConfig":
             return importlib.import_module(
                 "jmp.lightning_module"
             ).SeparateLRMultiplierConfig
-        if name == "ForceTargetConfig":
-            return importlib.import_module("jmp.nn.force_head").ForceTargetConfig
-        if name == "TargetsConfig":
-            return importlib.import_module("jmp.lightning_module").TargetsConfig
-        if name == "EnergyTargetConfig":
-            return importlib.import_module("jmp.nn.energy_head").EnergyTargetConfig
-        if name == "Config":
-            return importlib.import_module("jmp.lightning_module").Config
-        if name == "GraphComputerConfig":
-            return importlib.import_module("jmp.lightning_module").GraphComputerConfig
         if name == "StressTargetConfig":
             return importlib.import_module("jmp.nn.stress_head").StressTargetConfig
+        if name == "ForceTargetConfig":
+            return importlib.import_module("jmp.nn.force_head").ForceTargetConfig
+        if name == "Config":
+            return importlib.import_module("jmp.lightning_module").Config
+        if name == "EnergyTargetConfig":
+            return importlib.import_module("jmp.nn.energy_head").EnergyTargetConfig
+        if name == "GraphComputerConfig":
+            return importlib.import_module("jmp.lightning_module").GraphComputerConfig
         if name == "BasesConfig":
             return importlib.import_module("jmp.models.gemnet.bases").BasesConfig
         if name == "BackboneConfig":

@@ -50,7 +50,7 @@ class ForceFieldMetrics(nn.Module):
         # Force metrics
         self.force_mae(forces_hat, forces_true)
         self.force_mse(forces_hat, forces_true)
-        self.force_rmse(forces_hat, forces_true)
+        self.force_rmse(forces_hat.float(), forces_true.float())
         self.force_cos(forces_hat, forces_true)
 
         # Stress metrics

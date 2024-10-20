@@ -41,8 +41,8 @@ class SeparateLRMultiplierConfig(C.Config):
     backbone_multiplier: float
     """Learning rate multiplier for the backbone."""
 
-    head_multiplier: float
-    """Learning rate multiplier for the heads."""
+    rest_multiplier: float = 1.0
+    """Learning rate multiplier for the rest of the model (heads)."""
 
 
 class OptimizationConfig(C.Config):
@@ -52,7 +52,7 @@ class OptimizationConfig(C.Config):
     lr_scheduler: nt.config.LRSchedulerConfig | None
     """Learning rate scheduler configuration."""
 
-    separate_lr_multiplier: SeparateLRMultiplierConfig | None
+    separate_lr_multiplier: SeparateLRMultiplierConfig | None = None
     """Separate learning rate multipliers for the backbone and heads."""
 
 
@@ -214,10 +214,33 @@ class Module(nt.LightningModuleBase[Config]):
     def configure_optimizers(self):
         config = self.config.optimization
 
-        output: OptimizerLRSchedulerConfig = {
-            "optimizer": config.optimizer.create_optimizer(self.parameters())
-        }
+        if (lr_mult := config.separate_lr_multiplier) is None:
+            optimizer = config.optimizer.create_optimizer(self.parameters())
+        else:
+            backbone_params = list(self.backbone.parameters())
+            backbone_param_set = set(backbone_params)
 
+            rest_params: list[nn.Parameter] = []
+            for param in self.parameters():
+                if param not in backbone_param_set:
+                    rest_params.append(param)
+
+            optimizer = config.optimizer.create_optimizer(
+                [
+                    {
+                        "params": backbone_params,
+                        "lr": config.optimizer.lr * lr_mult.backbone_multiplier,
+                        "name": "backbone",
+                    },
+                    {
+                        "params": rest_params,
+                        "lr": config.optimizer.lr * lr_mult.rest_multiplier,
+                        "name": "rest",
+                    },
+                ]
+            )
+
+        output: OptimizerLRSchedulerConfig = {"optimizer": optimizer}
         if config.lr_scheduler is not None:
             output["lr_scheduler"] = config.lr_scheduler.create_scheduler(
                 output["optimizer"], self

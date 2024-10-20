@@ -24,24 +24,24 @@ else:
 
         if name in globals():
             return globals()[name]
+        if name == "TargetsConfig":
+            return importlib.import_module("jmp.lightning_module").TargetsConfig
         if name == "OptimizationConfig":
             return importlib.import_module("jmp.lightning_module").OptimizationConfig
         if name == "SeparateLRMultiplierConfig":
             return importlib.import_module(
                 "jmp.lightning_module"
             ).SeparateLRMultiplierConfig
-        if name == "ForceTargetConfig":
-            return importlib.import_module("jmp.lightning_module").ForceTargetConfig
-        if name == "TargetsConfig":
-            return importlib.import_module("jmp.lightning_module").TargetsConfig
-        if name == "EnergyTargetConfig":
-            return importlib.import_module("jmp.lightning_module").EnergyTargetConfig
-        if name == "Config":
-            return importlib.import_module("jmp.lightning_module").Config
-        if name == "GraphComputerConfig":
-            return importlib.import_module("jmp.lightning_module").GraphComputerConfig
         if name == "StressTargetConfig":
             return importlib.import_module("jmp.lightning_module").StressTargetConfig
+        if name == "ForceTargetConfig":
+            return importlib.import_module("jmp.lightning_module").ForceTargetConfig
+        if name == "Config":
+            return importlib.import_module("jmp.lightning_module").Config
+        if name == "EnergyTargetConfig":
+            return importlib.import_module("jmp.lightning_module").EnergyTargetConfig
+        if name == "GraphComputerConfig":
+            return importlib.import_module("jmp.lightning_module").GraphComputerConfig
         raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 # Submodule exports
