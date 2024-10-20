@@ -9,6 +9,7 @@ import nshtrainer as nt
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from lightning.fabric.utilities.apply_func import move_data_to_device
 from lightning.pytorch.utilities.types import OptimizerLRSchedulerConfig
 from torch_geometric.data import Batch
 from typing_extensions import override
@@ -148,9 +149,19 @@ class Module(nt.LightningModuleBase[Config]):
         return outputs
 
     def predict(self, batch: Batch) -> Predictions:
+        # Move the batch to the correct device
+        batch = move_data_to_device(batch, self.device)
+
+        # Compute graphs
+        batch = self.graph_computer(batch)
+
+        # Perform the forward pass
         outputs: Predictions = self(batch)
+
+        # Unit conversions: stress (KBar -> eV/A^3)
         if self.config.targets.convert_stress_to_ev_a3_for_predict:
             outputs["stress"] *= 1 / 160.21766208
+
         return outputs
 
     def _compute_loss(self, prediction: Predictions, data: Batch):

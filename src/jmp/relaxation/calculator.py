@@ -91,7 +91,7 @@ class JMPCalculator(Calculator):
     def __init__(self, lightning_module: Module):
         super().__init__()
 
-        self.lightning_module = lightning_module
+        self.lightning_module = lightning_module.eval()
         del lightning_module
 
         self.a2g = AtomsToGraphs(
@@ -119,11 +119,21 @@ class JMPCalculator(Calculator):
 
         if isinstance(atoms, Atoms):
             data_object = self.a2g.convert(atoms)
-            batch = Batch.from_data_list([data_object])
+            batch: Batch = Batch.from_data_list([data_object])
         else:
             batch = atoms
 
-        predictions = self.lightning_module.predict(batch)
+        # Make sure the expected properties are in the right format
+        if "tags" not in batch or batch.tags is None or (batch.tags == 0).all():
+            batch.tags = torch.full_like(batch.atomic_numbers, 2, dtype=torch.long)
+
+        batch.atomic_numbers = batch.atomic_numbers.long()
+        batch.natoms = batch.natoms.long()
+        batch.tags = batch.tags.long()
+        batch.fixed = batch.fixed.bool()
+
+        with torch.inference_mode(), torch.no_grad():
+            predictions = self.lightning_module.predict(batch)
         for key, pred in predictions.items():
             pred = pred.item() if pred.numel() == 1 else pred.cpu().numpy()
             self.results[key] = pred
