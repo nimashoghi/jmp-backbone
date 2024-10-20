@@ -137,6 +137,9 @@ class Module(nt.LightningModuleBase[Config]):
         }
         return outputs
 
+    def predict(self, batch: Batch) -> Predictions:
+        return self(batch)
+
     def _compute_loss(self, prediction: Predictions, data: Batch):
         energy_hat, forces_hat, stress_hat = (
             prediction["energy"],
