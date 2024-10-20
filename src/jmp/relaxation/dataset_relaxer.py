@@ -39,6 +39,9 @@ class RelaxerConfig(C.Config):
     optim_log_file: Path = Path("/dev/null")
     """Path to the log file for the optimizer. If None, the log file will be written to /dev/null."""
 
+    output_relaxed_structures: bool = False
+    """Whether to output the relaxed structures. This can be memory/storage intensive."""
+
     def _cell_filter_cls(self):
         if self.cell_filter is None:
             return None
@@ -63,11 +66,11 @@ class RelaxResult(TypedDict):
     material_id: str
     """Material ID of the structure."""
 
-    structure: Structure
-    """Relaxed structure."""
-
     energy: float
     """Relaxed energy."""
+
+    structure: NotRequired[Structure]
+    """Relaxed structure."""
 
     metadata: NotRequired[dict[str, Any]]
     """Metadata associated with the structure, will be saved with the relaxation results."""
@@ -116,14 +119,12 @@ def relax_generator(
             optim.run(fmax=config.force_max, steps=config.max_steps)
 
             energy = atoms.get_potential_energy()
-            structure = AseAtomsAdaptor.get_structure(atoms)
 
             # Yield the results
-            result: RelaxResult = {
-                "material_id": material_id,
-                "structure": structure,
-                "energy": energy,
-            }
+            result: RelaxResult = {"material_id": material_id, "energy": energy}
+            if config.output_relaxed_structures:
+                result["structure"] = AseAtomsAdaptor.get_structure(atoms)
+
             if (metadata := dataset_item.get("metadata")) is not None:
                 result["metadata"] = metadata
 
