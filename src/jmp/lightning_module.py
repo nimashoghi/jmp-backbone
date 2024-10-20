@@ -39,6 +39,10 @@ class TargetsConfig(C.Config):
     stress_loss_coefficient: float
     """Coefficient for the stress loss."""
 
+    convert_stress_to_ev_a3_for_predict: bool = True
+    """Whether to convert the stress from KBar to eV/A^3 when `predict` is called.
+    This essentially multiplies the stress by (1 / 160.21766208)."""
+
 
 class SeparateLRMultiplierConfig(C.Config):
     backbone_multiplier: float
@@ -144,7 +148,10 @@ class Module(nt.LightningModuleBase[Config]):
         return outputs
 
     def predict(self, batch: Batch) -> Predictions:
-        return self(batch)
+        outputs: Predictions = self(batch)
+        if self.config.targets.convert_stress_to_ev_a3_for_predict:
+            outputs["stress"] *= 1 / 160.21766208
+        return outputs
 
     def _compute_loss(self, prediction: Predictions, data: Batch):
         energy_hat, forces_hat, stress_hat = (
