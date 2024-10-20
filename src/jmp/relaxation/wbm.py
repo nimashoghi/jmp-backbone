@@ -138,7 +138,7 @@ def _dataset_generator(df: pd.DataFrame):
 
 @torch.inference_mode()
 @torch.no_grad()
-def default_predict(data: Batch, lightning_module: Module):
+def predict(data: Batch, lightning_module: Module):
     # Make sure the expected properties are in the right format
     if "tags" not in data or data.tags is None or (data.tags == 0).all():
         data.tags = torch.full_like(data.atomic_numbers, 2, dtype=torch.long)
@@ -159,14 +159,9 @@ def default_predict(data: Batch, lightning_module: Module):
     def _composition(data: Batch):
         return dict(Counter(data.atomic_numbers.tolist()))
 
-    predictions["energy"] = torch.from_numpy(
-        get_e_form_per_atom(
-            {
-                "composition": _composition(data),
-                "energy": predictions["energy"],
-            }
-        )
-    ).to(predictions["energy"].device, predictions["energy"].dtype)
+    predictions["energy"] = get_e_form_per_atom(
+        {"composition": _composition(data), "energy": predictions["energy"]}
+    )
     return predictions
 
 
@@ -187,7 +182,7 @@ def relax_wbm_run_fn(
     lightning_module = lightning_module.to(device)
 
     # Create the calculator
-    calculator = JMPCalculator(lightning_module)
+    calculator = JMPCalculator(lightning_module, predict=predict)
 
     # Load the dataset for this rank
     df_wbm, df_wbm_initial = load_dataset(
