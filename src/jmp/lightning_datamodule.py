@@ -58,7 +58,7 @@ class MPTrjAlexOMAT24DataModuleConfig(C.Config):
     filter_small_systems: bool = True
     """Whether to filter out small systems (less than 4 atoms)."""
 
-    subsample_val: int | None = 10_000
+    subsample_val: int | None = None
     """If not `None`, subsample each validation dataset to this number of samples (if the dataset is larger)."""
 
     def with_linear_reference_(self, reference: Literal["mptrj-salex"]):

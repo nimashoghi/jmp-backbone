@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import cast
 
 import nshconfig as C
@@ -19,6 +20,8 @@ from .nn.energy_head import EnergyTargetConfig
 from .nn.force_head import ForceTargetConfig
 from .nn.stress_head import StressTargetConfig
 from .types import Predictions
+
+log = logging.getLogger(__name__)
 
 
 class TargetsConfig(C.Config):
@@ -62,6 +65,9 @@ class Config(nt.BaseConfig):
 
     graph_computer: GraphComputerConfig
     """Graph computer configuration."""
+
+    ignore_graph_generation_errors: bool = False
+    """Whether to ignore errors during graph generation."""
 
     targets: TargetsConfig
     """Targets configuration."""
@@ -181,7 +187,19 @@ class Module(nt.LightningModuleBase[Config]):
 
     def _common_step(self, data: Batch, metrics: ForceFieldMetrics):
         # Compute graphs
-        data = self.graph_computer(data)
+        if self.config.ignore_graph_generation_errors:
+            try:
+                data = self.graph_computer(data)
+            except Exception as e:
+                # If this is a CUDA error, rethrow it
+                if "CUDA" in str(data):
+                    raise
+
+                # Otherwise, log the error and skip the batch
+                log.error(f"Error generating graphs: {e}", exc_info=True)
+                return self.zero_loss()
+        else:
+            data = self.graph_computer(data)
 
         # Forward pass
         outputs = self(data)
@@ -199,9 +217,7 @@ class Module(nt.LightningModuleBase[Config]):
     @override
     def training_step(self, batch: Batch, batch_idx: int):
         with self.log_context(prefix="train/"):
-            loss = self._common_step(batch, self.train_metrics)
-
-        return loss
+            return self._common_step(batch, self.train_metrics)
 
     @override
     def validation_step(self, batch: Batch, batch_idx: int):
