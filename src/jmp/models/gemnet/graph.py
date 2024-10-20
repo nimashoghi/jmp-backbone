@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from functools import partial, wraps
+from functools import partial
 from typing import (
     TYPE_CHECKING,
-    ParamSpec,
     Protocol,
     TypedDict,
     cast,
@@ -558,40 +557,6 @@ def generate_graphs(
     return graphs
 
 
-P = ParamSpec("P")
-
-
-def with_goc_graphs(
-    cutoffs: CutoffsConfig | Callable[[BaseData], CutoffsConfig],
-    max_neighbors: MaxNeighborsConfig | Callable[[BaseData], MaxNeighborsConfig],
-    pbc: bool,
-    symmetrize_main: bool = False,
-    qint_tags: list[int] | None = [1, 2],
-):
-    def decorator(func: Callable[P, BaseData]):
-        @wraps(func)
-        def wrapper(*args: P.args, **kwargs: P.kwargs) -> BaseData:
-            data = func(*args, **kwargs)
-
-            graphs = generate_graphs(
-                data,
-                cutoffs=cutoffs,
-                max_neighbors=max_neighbors,
-                pbc=pbc,
-                symmetrize_main=symmetrize_main,
-                qint_tags=qint_tags,
-            )
-            for graph_type, graph in graphs.items():
-                for key, value in graph.items():
-                    setattr(data, f"{graph_type}_{key}", value)
-
-            return data
-
-        return wrapper
-
-    return decorator
-
-
 class Graphs(TypedDict):
     main: Graph
     a2a: Graph
@@ -628,14 +593,12 @@ def graphs_from_batch(data: BaseData | Batch) -> Graphs:
     return cast(Graphs, graphs)
 
 
-def graphs_to_batch(data: BaseData | Batch, graphs: Graphs):
+def write_graphs_to_batch_(data: BaseData | Batch, graphs: Graphs):
     global GRAPH_TYPES
 
     for graph_type in GRAPH_TYPES:
         for key, value in graphs[graph_type].items():
             setattr(data, f"{graph_type}_{key}", value)
-
-    return data
 
 
 @runtime_checkable
@@ -717,15 +680,14 @@ class GraphComputer(nn.Module):
         # main_graph = symmetrize_edges(main_graph, num_atoms=data.pos.shape[0])
         qint_graph = tag_mask(data, qint_graph, tags=self.backbone_config.qint_tags)
 
-        graphs = {
-            "main": main_graph,
-            "a2a": aint_graph,
-            "a2ee2a": aeaint_graph,
-            "qint": qint_graph,
-        }
-
-        for graph_type, graph in graphs.items():
-            for key, value in graph.items():
-                setattr(data, f"{graph_type}_{key}", value)
+        write_graphs_to_batch_(
+            data,
+            {
+                "main": main_graph,
+                "a2a": aint_graph,
+                "a2ee2a": aeaint_graph,
+                "qint": qint_graph,
+            },
+        )
 
         return data
