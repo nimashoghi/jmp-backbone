@@ -6,6 +6,8 @@ This source code is licensed under the license found in the
 LICENSE file in the root directory of this source tree.
 """
 
+from __future__ import annotations
+
 import torch
 from torch_scatter import segment_coo
 from torch_sparse import SparseTensor

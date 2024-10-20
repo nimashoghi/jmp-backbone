@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 import functools
+import logging
 from pathlib import Path
 from typing import Literal
 
@@ -10,6 +13,8 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 from torch_geometric.data import Batch, Data
 from typing_extensions import assert_never, override
+
+log = logging.getLogger(__name__)
 
 
 class DatasetConfig(C.Config):
@@ -140,6 +145,7 @@ class MPTrjAlexOMAT24Dataset(Dataset, nt.data.balanced_batch_sampler.DatasetWith
         self.reference = None
         if self.data_config.reference is not None:
             self.reference = torch.tensor(self.data_config.reference, dtype=torch.float)
+            log.critical(f"Using reference: {self.reference}")
 
     @staticmethod
     def ensure_downloaded(data_config: MPTrjAlexOMAT24DataModuleConfig):
@@ -153,15 +159,15 @@ class MPTrjAlexOMAT24Dataset(Dataset, nt.data.balanced_batch_sampler.DatasetWith
         _ = _load_dataset(data_config, data_config.omat24, split="val")
 
     @functools.cached_property
-    def num_atoms(self):
-        mptrj_natoms = self.mptrj["num_atoms"] if self.mptrj is not None else []
+    def natoms(self):
+        mptrj_natoms = self.mptrj["natoms"] if self.mptrj is not None else []
         salex_natoms = self.salex["natoms"] if self.salex is not None else []
         omat24_natoms = self.omat24["natoms"] if self.omat24 is not None else []
 
         return np.concatenate([mptrj_natoms, salex_natoms, omat24_natoms], axis=0)
 
     def data_sizes(self, indices: list[int]) -> np.ndarray:
-        return self.num_atoms[indices]
+        return self.natoms[indices]
 
     def __len__(self):
         total_len = 0
@@ -259,7 +265,6 @@ class MPTrjAlexOMAT24DataModule(nt.LightningDataModuleBase):
         # Make sure all datasets are downloaded
         MPTrjAlexOMAT24Dataset.ensure_downloaded(self.config)
 
-    @functools.cache
     def _dataset(self, split: Literal["train", "val"]):
         return MPTrjAlexOMAT24Dataset(self.config, split=split)
 
@@ -269,8 +274,9 @@ class MPTrjAlexOMAT24DataModule(nt.LightningDataModuleBase):
 
     @override
     def train_dataloader(self):
+        dataset = MPTrjAlexOMAT24Dataset(self.config, split="train")
         dl = DataLoader(
-            self._dataset("train"),
+            dataset,
             batch_size=self.config.batch_size,
             num_workers=self.config.num_workers,
             pin_memory=self.config.pin_memory,
@@ -281,8 +287,9 @@ class MPTrjAlexOMAT24DataModule(nt.LightningDataModuleBase):
 
     @override
     def val_dataloader(self):
+        dataset = MPTrjAlexOMAT24Dataset(self.config, split="val")
         dl = DataLoader(
-            self._dataset("val"),
+            dataset,
             batch_size=self.config.batch_size,
             num_workers=self.config.num_workers,
             pin_memory=self.config.pin_memory,

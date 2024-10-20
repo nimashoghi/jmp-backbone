@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 PRECOMPUTED_MPTRJ_ALEX = [
     0.0,
     -3.19632944,

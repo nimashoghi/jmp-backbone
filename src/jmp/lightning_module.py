@@ -29,12 +29,31 @@ class TargetsConfig(C.Config):
     stress: StressTargetConfig
     """Stress target configuration."""
 
-    energy_loss_coefficient: float = 1.0
+    energy_loss_coefficient: float
     """Coefficient for the energy loss."""
-    force_loss_coefficient: float = 1.0
+    force_loss_coefficient: float
     """Coefficient for the force loss."""
-    stress_loss_coefficient: float = 1.0
+    stress_loss_coefficient: float
     """Coefficient for the stress loss."""
+
+
+class SeparateLRMultiplierConfig(C.Config):
+    backbone_multiplier: float
+    """Learning rate multiplier for the backbone."""
+
+    head_multiplier: float
+    """Learning rate multiplier for the heads."""
+
+
+class OptimizationConfig(C.Config):
+    optimizer: nt.config.OptimizerConfig
+    """Optimizer configuration."""
+
+    lr_scheduler: nt.config.LRSchedulerConfig | None
+    """Learning rate scheduler configuration."""
+
+    separate_lr_multiplier: SeparateLRMultiplierConfig | None
+    """Separate learning rate multipliers for the backbone and heads."""
 
 
 class Config(nt.BaseConfig):
@@ -47,11 +66,8 @@ class Config(nt.BaseConfig):
     targets: TargetsConfig
     """Targets configuration."""
 
-    optimizer: nt.config.OptimizerConfig
-    """Optimizer configuration."""
-
-    lr_scheduler: nt.config.LRSchedulerConfig | None
-    """Learning rate scheduler configuration."""
+    optimization: OptimizationConfig
+    """Optimization configuration."""
 
 
 class Module(nt.LightningModuleBase[Config]):
@@ -196,15 +212,15 @@ class Module(nt.LightningModuleBase[Config]):
 
     @override
     def configure_optimizers(self):
+        config = self.config.optimization
+
         output: OptimizerLRSchedulerConfig = {
-            "optimizer": self.config.optimizer.create_optimizer(self.parameters())
+            "optimizer": config.optimizer.create_optimizer(self.parameters())
         }
 
-        if self.config.lr_scheduler is not None:
-            output["lr_scheduler"] = self.config.lr_scheduler.create_scheduler(
-                output["optimizer"],
-                self,
-                self.config.optimizer.lr,
+        if config.lr_scheduler is not None:
+            output["lr_scheduler"] = config.lr_scheduler.create_scheduler(
+                output["optimizer"], self
             )
 
         return output
