@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+from collections import Counter
+from collections.abc import Callable
 from pathlib import Path
 
 import ase
@@ -9,14 +11,17 @@ import numpy as np
 import pandas as pd
 import torch
 from matbench_discovery.data import DataFiles
+from matbench_discovery.energy import get_e_form_per_atom
 from pymatgen.core import Structure
 from pymatgen.io.ase import AseAtomsAdaptor
 from pymatviz.enums import Key
+from torch_geometric.data import Batch
 from tqdm.auto import tqdm
 from typing_extensions import Self
 
-from ..lightning_module import Module
-from .dataset_relaxer import DatasetItem, RelaxerConfig, relax
+from ..lightning_module import Config, Module
+from .calculator import JMPCalculator
+from .dataset_relaxer import DatasetItem, RelaxerConfig, relax_generator, write_result
 
 log = logging.getLogger(__name__)
 
@@ -109,18 +114,10 @@ class RelaxWBMConfig(C.Config):
         return configs_out
 
 
-def _dataset_generator(df: pd.DataFrame, *, config: RelaxWBMConfig):
-    for idx, row in (
-        pbar := tqdm(
-            df.iterrows(),
-            disable=config.tqdm_disable,
-            desc="Relaxing WBM",
-            total=len(df),
-        )
-    ):
+def _dataset_generator(df: pd.DataFrame):
+    for idx, row in df.iterrows():
         # Get the material id
         material_id = row[Key.mat_id.value]
-        pbar.set_postfix_str(f"Material ID: {material_id}")
         # Get the initial structure
         atoms = AseAtomsAdaptor.get_atoms(Structure.from_dict(row["initial_structure"]))
         assert isinstance(atoms, ase.Atoms), f"Expected ase.Atoms, got {type(atoms)}"
@@ -139,13 +136,58 @@ def _dataset_generator(df: pd.DataFrame, *, config: RelaxWBMConfig):
         yield dataset_item
 
 
-def relax_wbm_run_fn(config: RelaxWBMConfig):
-    # Resolve the current device
+@torch.inference_mode()
+@torch.no_grad()
+def default_predict(data: Batch, lightning_module: Module):
+    # Make sure the expected properties are in the right format
+    if "tags" not in data or data.tags is None or (data.tags == 0).all():
+        data.tags = torch.full_like(data.atomic_numbers, 2, dtype=torch.long)
+
+    data.atomic_numbers = data.atomic_numbers.long()
+    data.natoms = data.natoms.long()
+    data.tags = data.tags.long()
+    data.fixed = data.fixed.bool()
+
+    # Run the prediction, converting stress to ev/A^3 and using the total energy
+    predictions = lightning_module.predict(
+        data,
+        convert_stress_to_ev_a3=True,
+        energy_kind="total",
+    )
+
+    # Compute the formation energy per atom from the total energy
+    def _composition(data: Batch):
+        return dict(Counter(data.atomic_numbers.tolist()))
+
+    predictions["energy"] = torch.from_numpy(
+        get_e_form_per_atom(
+            {
+                "composition": _composition(data),
+                "energy": predictions["energy"],
+            }
+        )
+    ).to(predictions["energy"].device, predictions["energy"].dtype)
+    return predictions
+
+
+def relax_wbm_run_fn(
+    config: RelaxWBMConfig,
+    results_dir: Path,
+    update_lm_config: Callable[[Config], Config] | None = None,
+):  # Resolve the current device
     device = config._resolve_device()
 
     # Load the model from the checkpoint
-    lightning_module = Module.load_checkpoint(config.ckpt_path, map_location=device)
+    lm_config = Config.from_checkpoint(config.ckpt_path)
+    if update_lm_config is not None:
+        lm_config = update_lm_config(lm_config)
+    lightning_module = Module.load_checkpoint(
+        config.ckpt_path, lm_config, map_location=device
+    )
     lightning_module = lightning_module.to(device)
+
+    # Create the calculator
+    calculator = JMPCalculator(lightning_module)
 
     # Load the dataset for this rank
     df_wbm, df_wbm_initial = load_dataset(
@@ -158,8 +200,23 @@ def relax_wbm_run_fn(config: RelaxWBMConfig):
     # Merge on matching material ids
     df = pd.merge(df_wbm, df_wbm_initial, on=Key.mat_id.value, how="inner")
 
-    # Create the dataset generator
-    dataset = _dataset_generator(df, config=config)
+    # Create the dataset generator and run the relaxation
+    dataset = _dataset_generator(df)
+    predicted: list[float] = []
+    for relax_result in (
+        pbar := tqdm(
+            relax_generator(config.relaxer, calculator, dataset),
+            disable=config.tqdm_disable,
+            desc="Relaxing WBM",
+            total=len(df),
+        )
+    ):
+        pbar.set_postfix_str(f"Material ID: {relax_result['material_id']}")
 
-    # Run the relaxation
-    relax(config.relaxer, lightning_module, dataset)
+        # Write the relaxation result
+        write_result(relax_result, results_dir)
+        predicted.append(
+            relax_result["energy"].item()
+            if not isinstance(relax_result["energy"], (float, int))
+            else relax_result["energy"]
+        )

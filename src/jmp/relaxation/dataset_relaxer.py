@@ -10,11 +10,10 @@ import nshconfig as C
 from ase import Atoms
 from ase.filters import FrechetCellFilter, UnitCellFilter
 from ase.optimize import BFGS, FIRE, LBFGS
+from pymatgen.core import Structure
 from pymatgen.io.ase import AseAtomsAdaptor
-from tqdm import tqdm
 from typing_extensions import NotRequired, TypedDict
 
-from ..lightning_module import Module
 from .calculator import JMPCalculator
 
 FILTER_CLS = {"frechet": FrechetCellFilter, "unit": UnitCellFilter}
@@ -22,9 +21,6 @@ OPTIM_CLS = {"FIRE": FIRE, "LBFGS": LBFGS, "BFGS": BFGS}
 
 
 class RelaxerConfig(C.Config):
-    results_dir: Path
-    """Directory to save the relaxation results."""
-
     optimizer: Literal["FIRE", "LBFGS", "BFGS"]
     """ASE optimizer to use for relaxation."""
 
@@ -52,16 +48,6 @@ class RelaxerConfig(C.Config):
         return OPTIM_CLS[self.optimizer]
 
 
-def _write_result(
-    config: RelaxerConfig,
-    material_id: str,
-    result: dict[str, Any],
-):
-    result_path = config.results_dir / f"{material_id}.dill"
-    with open(result_path, "wb") as f:
-        dill.dump(result, f)
-
-
 class DatasetItem(TypedDict):
     material_id: str
     """Material ID of the structure."""
@@ -73,22 +59,37 @@ class DatasetItem(TypedDict):
     """Metadata associated with the structure, will be saved with the relaxation results."""
 
 
-def relax(
+class RelaxResult(TypedDict):
+    material_id: str
+    """Material ID of the structure."""
+
+    structure: Structure
+    """Relaxed structure."""
+
+    energy: float
+    """Relaxed energy."""
+
+    metadata: NotRequired[dict[str, Any]]
+    """Metadata associated with the structure, will be saved with the relaxation results."""
+
+
+def write_result(result: RelaxResult, results_dir: Path):
+    material_id = result["material_id"]
+    result_path = results_dir / f"{material_id}.dill"
+    with open(result_path, "wb") as f:
+        dill.dump(result, f)
+
+
+def relax_generator(
     config: RelaxerConfig,
-    lightning_module: Module,
+    calculator: JMPCalculator,
     dataset: Iterable[DatasetItem],
 ):
     """Run WBM relaxations using an ASE optimizer."""
 
-    # Create the results directory
-    config.results_dir.mkdir(parents=True, exist_ok=True)
-
     # Resolve the optimizer and cell filter classes
     optim_cls = config._optim_cls()
     filter_cls = config._cell_filter_cls()
-
-    # Create the ASE calculator
-    calculator = JMPCalculator(lightning_module)
 
     # Create a set for the relaxed ids
     relaxed: set[str] = set()
@@ -117,16 +118,28 @@ def relax(
             energy = atoms.get_potential_energy()
             structure = AseAtomsAdaptor.get_structure(atoms)
 
-            # Save the results
-            result = {
+            # Yield the results
+            result: RelaxResult = {
                 "material_id": material_id,
                 "structure": structure,
                 "energy": energy,
             }
             if (metadata := dataset_item.get("metadata")) is not None:
                 result["metadata"] = metadata
-            _write_result(config, material_id, result)
+
+            yield result
             relaxed.add(material_id)
         except Exception:
             logging.exception(f"Failed to relax {material_id}")
             continue
+
+
+def relax_and_write(
+    config: RelaxerConfig,
+    results_dir: Path,
+    calculator: JMPCalculator,
+    dataset: Iterable[DatasetItem],
+):
+    """Run WBM relaxations using an ASE optimizer and write the results to disk."""
+    for result in relax_generator(config, calculator, dataset):
+        write_result(result, results_dir)

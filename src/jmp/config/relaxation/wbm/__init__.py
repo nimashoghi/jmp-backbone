@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 # Config/alias imports
 
 if TYPE_CHECKING:
+    from jmp.relaxation.wbm import Config as Config
     from jmp.relaxation.wbm import RelaxerConfig as RelaxerConfig
     from jmp.relaxation.wbm import RelaxWBMConfig as RelaxWBMConfig
 else:
@@ -16,6 +17,8 @@ else:
 
         if name in globals():
             return globals()[name]
+        if name == "Config":
+            return importlib.import_module("jmp.relaxation.wbm").Config
         if name == "RelaxWBMConfig":
             return importlib.import_module("jmp.relaxation.wbm").RelaxWBMConfig
         if name == "RelaxerConfig":

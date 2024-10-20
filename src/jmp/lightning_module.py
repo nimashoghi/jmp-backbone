@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import cast
+from typing import Literal, cast
 
 import nshconfig as C
 import nshconfig_extra as CE
@@ -12,7 +12,7 @@ import torch.nn.functional as F
 from lightning.fabric.utilities.apply_func import move_data_to_device
 from lightning.pytorch.utilities.types import OptimizerLRSchedulerConfig
 from torch_geometric.data import Batch
-from typing_extensions import override
+from typing_extensions import assert_never, override
 
 from .metrics import ForceFieldMetrics
 from .models.gemnet.backbone import GemNetOCBackbone
@@ -20,6 +20,7 @@ from .models.gemnet.graph import GraphComputer, GraphComputerConfig
 from .nn.energy_head import EnergyTargetConfig
 from .nn.force_head import ForceTargetConfig
 from .nn.stress_head import StressTargetConfig
+from .referencing import IdentityReferencerConfig, ReferencerConfig
 from .types import Predictions
 
 log = logging.getLogger(__name__)
@@ -39,10 +40,6 @@ class TargetsConfig(C.Config):
     """Coefficient for the force loss."""
     stress_loss_coefficient: float
     """Coefficient for the stress loss."""
-
-    convert_stress_to_ev_a3_for_predict: bool = True
-    """Whether to convert the stress from KBar to eV/A^3 when `predict` is called.
-    This essentially multiplies the stress by (1 / 160.21766208)."""
 
 
 class SeparateLRMultiplierConfig(C.Config):
@@ -79,6 +76,9 @@ class Config(nt.BaseConfig):
 
     optimization: OptimizationConfig
     """Optimization configuration."""
+
+    energy_referencer: ReferencerConfig = IdentityReferencerConfig()
+    """Energy referencing configuration."""
 
 
 class Module(nt.LightningModuleBase[Config]):
@@ -131,10 +131,19 @@ class Module(nt.LightningModuleBase[Config]):
             # self._process_aint_graph_transform,
         )
 
+        # Energy referencing
+        self.energy_referencer = self.config.energy_referencer.create_referencer()
+
         # Metrics
         self.train_metrics = ForceFieldMetrics()
         self.val_metrics = ForceFieldMetrics()
         self.test_metrics = ForceFieldMetrics()
+
+    def reference_energy(self, data: Batch):
+        if self.config.energy_referencing.per_atom_reference is not None:
+            return torch.tensor(
+                self.config.energy_referencing.per_atom_reference, device=data.x.device
+            )
 
     @override
     def forward(self, data: Batch):
@@ -148,7 +157,26 @@ class Module(nt.LightningModuleBase[Config]):
         }
         return outputs
 
-    def predict(self, batch: Batch) -> Predictions:
+    def predict(
+        self,
+        batch: Batch,
+        *,
+        convert_stress_to_ev_a3: bool = True,
+        energy_kind: Literal["total", "referenced"] = "total",
+    ) -> Predictions:
+        """
+        Perform a forward pass and return the predictions.
+
+        Args:
+            batch (Batch): Input batch.
+            convert_stress_to_ev_a3 (bool): Whether to convert the stress from KBar to eV/A^3.
+            energy_kind (Literal["total", "referenced"]): Kind of energy to return.
+                - "total": Total energy.
+                - "referenced": Referenced energy.
+
+        Returns:
+            Predictions: Model predictions.
+        """
         # Move the batch to the correct device
         batch = move_data_to_device(batch, self.device)
 
@@ -159,8 +187,20 @@ class Module(nt.LightningModuleBase[Config]):
         outputs: Predictions = self(batch)
 
         # Unit conversions: stress (KBar -> eV/A^3)
-        if self.config.targets.convert_stress_to_ev_a3_for_predict:
+        if convert_stress_to_ev_a3:
             outputs["stress"] *= 1 / 160.21766208
+
+        # Energy referencing
+        match energy_kind:
+            case "total":
+                outputs["energy"] = self.energy_referencer.dereference(
+                    outputs["energy"], batch.atomic_numbers
+                )
+            case "referenced":
+                # Nothing to do here, the energy referencing is already applied in the forward
+                pass
+            case _:
+                assert_never(energy_kind)
 
         return outputs
 
@@ -219,6 +259,10 @@ class Module(nt.LightningModuleBase[Config]):
         else:
             data = self.graph_computer(data)
 
+        # Apply energy referencing
+        data.y_total = data.y.clone()
+        data.y = self.energy_referencer.reference(data.y_total, data.atomic_numbers)
+
         # Forward pass
         outputs = self(data)
         outputs = cast(Predictions, outputs)
@@ -229,6 +273,9 @@ class Module(nt.LightningModuleBase[Config]):
 
         # Compute metrics
         self.log_dict(metrics(outputs, data))
+
+        # Undo energy referencing
+        data.y = data.pop("y_total")
 
         return loss
 

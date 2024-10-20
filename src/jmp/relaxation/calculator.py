@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from types import MappingProxyType
+from typing import Protocol, runtime_checkable
 
 import torch
 from ase import Atoms
@@ -13,6 +14,7 @@ from torch_geometric.data import Batch
 from typing_extensions import override
 
 from ..lightning_module import Module
+from ..types import Predictions
 
 # system level model predictions have different shapes than expected by ASE
 ASE_PROP_RESHAPE = MappingProxyType(
@@ -83,16 +85,44 @@ def batch_to_atoms(
     return atoms_objects
 
 
+@torch.inference_mode()
+@torch.no_grad()
+def default_predict(data: Batch, lightning_module: Module) -> Predictions:
+    # Make sure the expected properties are in the right format
+    if "tags" not in data or data.tags is None or (data.tags == 0).all():
+        data.tags = torch.full_like(data.atomic_numbers, 2, dtype=torch.long)
+
+    data.atomic_numbers = data.atomic_numbers.long()
+    data.natoms = data.natoms.long()
+    data.tags = data.tags.long()
+    data.fixed = data.fixed.bool()
+
+    predictions = lightning_module.predict(data)
+    return predictions
+
+
+@runtime_checkable
+class PredictCallableProtocol(Protocol):
+    def __call__(self, data: Batch, /, lightning_module: Module) -> Predictions: ...
+
+
 class JMPCalculator(Calculator):
     """ASE based calculator using an OCP model"""
 
     _reshaped_props = ASE_PROP_RESHAPE
 
-    def __init__(self, lightning_module: Module):
+    def __init__(
+        self,
+        lightning_module: Module,
+        predict: PredictCallableProtocol = default_predict,
+    ):
         super().__init__()
 
         self.lightning_module = lightning_module.eval()
         del lightning_module
+
+        self.predict = predict
+        del predict
 
         self.a2g = AtomsToGraphs(
             r_energy=False,
@@ -123,17 +153,8 @@ class JMPCalculator(Calculator):
         else:
             batch = atoms
 
-        # Make sure the expected properties are in the right format
-        if "tags" not in batch or batch.tags is None or (batch.tags == 0).all():
-            batch.tags = torch.full_like(batch.atomic_numbers, 2, dtype=torch.long)
+        predictions = self.predict(batch, self.lightning_module)
 
-        batch.atomic_numbers = batch.atomic_numbers.long()
-        batch.natoms = batch.natoms.long()
-        batch.tags = batch.tags.long()
-        batch.fixed = batch.fixed.bool()
-
-        with torch.inference_mode(), torch.no_grad():
-            predictions = self.lightning_module.predict(batch)
         for key, pred in predictions.items():
             pred = pred.item() if pred.numel() == 1 else pred.cpu().numpy()
             self.results[key] = pred
