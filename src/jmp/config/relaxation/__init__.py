@@ -22,4 +22,7 @@ else:
             return importlib.import_module("jmp.relaxation.wbm").RelaxerConfig
         raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
+
 # Submodule exports
+from . import dataset_relaxer as dataset_relaxer
+from . import wbm as wbm
