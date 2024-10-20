@@ -74,12 +74,14 @@ class DatasetItem(TypedDict):
 
 
 def relax(
-    config: RelaxerConfig, lightning_module: Module, dataset: Iterable[DatasetItem]
+    config: RelaxerConfig,
+    lightning_module: Module,
+    dataset: Iterable[DatasetItem],
 ):
     """Run WBM relaxations using an ASE optimizer."""
 
     # Create the results directory
-    config.results_dir.mkdir(parents=True, exist_ok=False)
+    config.results_dir.mkdir(parents=True, exist_ok=True)
 
     # Resolve the optimizer and cell filter classes
     optim_cls = config._optim_cls()
@@ -91,7 +93,7 @@ def relax(
     # Create a set for the relaxed ids
     relaxed: set[str] = set()
 
-    for dataset_item in tqdm(dataset, desc="Relaxing with ASE"):
+    for dataset_item in dataset:
         material_id = dataset_item["material_id"]
         if material_id in relaxed:
             logging.info(f"Structure {material_id} has already been relaxed.")
