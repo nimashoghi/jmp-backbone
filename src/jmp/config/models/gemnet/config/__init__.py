@@ -16,10 +16,10 @@ else:
 
         if name in globals():
             return globals()[name]
-        if name == "BasesConfig":
-            return importlib.import_module("jmp.models.gemnet.config").BasesConfig
         if name == "BackboneConfig":
             return importlib.import_module("jmp.models.gemnet.config").BackboneConfig
+        if name == "BasesConfig":
+            return importlib.import_module("jmp.models.gemnet.config").BasesConfig
         raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 # Submodule exports

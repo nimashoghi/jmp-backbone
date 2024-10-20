@@ -12,6 +12,7 @@ from ase.filters import FrechetCellFilter, UnitCellFilter
 from ase.optimize import BFGS, FIRE, LBFGS
 from pymatgen.io.ase import AseAtomsAdaptor
 from tqdm import tqdm
+from typing_extensions import NotRequired, TypedDict
 
 from ..lightning_module import Module
 from .calculator import JMPCalculator
@@ -51,13 +52,30 @@ class RelaxerConfig(C.Config):
         return OPTIM_CLS[self.optimizer]
 
 
-def _write_result(config: RelaxerConfig, material_id: str, result: dict[str, Any]):
+def _write_result(
+    config: RelaxerConfig,
+    material_id: str,
+    result: dict[str, Any],
+):
     result_path = config.results_dir / f"{material_id}.dill"
     with open(result_path, "wb") as f:
         dill.dump(result, f)
 
 
-def relax(config: RelaxerConfig, lightning_module: Module, dataset: Iterable[Atoms]):
+class DatasetItem(TypedDict):
+    material_id: str
+    """Material ID of the structure."""
+
+    atoms: Atoms
+    """ase.Atoms object representing the structure."""
+
+    metadata: NotRequired[dict[str, Any]]
+    """Metadata associated with the structure, will be saved with the relaxation results."""
+
+
+def relax(
+    config: RelaxerConfig, lightning_module: Module, dataset: Iterable[DatasetItem]
+):
     """Run WBM relaxations using an ASE optimizer."""
 
     # Create the results directory
@@ -73,13 +91,13 @@ def relax(config: RelaxerConfig, lightning_module: Module, dataset: Iterable[Ato
     # Create a set for the relaxed ids
     relaxed: set[str] = set()
 
-    for atoms in tqdm(dataset, desc="Relaxing with ASE"):
-        # atoms = dataset.get_atoms(idx)
-        material_id = atoms.info["sid"]
+    for dataset_item in tqdm(dataset, desc="Relaxing with ASE"):
+        material_id = dataset_item["material_id"]
         if material_id in relaxed:
             logging.info(f"Structure {material_id} has already been relaxed.")
             continue
 
+        atoms = dataset_item["atoms"]
         try:
             atoms.calc = calculator
 
@@ -98,7 +116,13 @@ def relax(config: RelaxerConfig, lightning_module: Module, dataset: Iterable[Ato
             structure = AseAtomsAdaptor.get_structure(atoms)
 
             # Save the results
-            result = {"structure": structure, "energy": energy}
+            result = {
+                "material_id": material_id,
+                "structure": structure,
+                "energy": energy,
+            }
+            if (metadata := dataset_item.get("metadata")) is not None:
+                result["metadata"] = metadata
             _write_result(config, material_id, result)
             relaxed.add(material_id)
         except Exception:
