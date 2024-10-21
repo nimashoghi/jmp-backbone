@@ -10,11 +10,6 @@ import nshconfig as C
 import numpy as np
 import pandas as pd
 import torch
-from matbench_discovery.data import DataFiles
-from matbench_discovery.energy import get_e_form_per_atom
-from pymatgen.core import Structure
-from pymatgen.io.ase import AseAtomsAdaptor
-from pymatviz.enums import Key
 from torch_geometric.data import Batch
 from tqdm.auto import tqdm
 from typing_extensions import Self
@@ -32,6 +27,8 @@ def load_dataset(
     rank: int,
     world_size: int,
 ):
+    from matbench_discovery.data import DataFiles
+
     # Load the DataFrames
     df_wbm = pd.read_csv(DataFiles.wbm_summary.path)
     df_wbm_initial = pd.read_json(DataFiles.wbm_initial_structures.path)
@@ -115,6 +112,10 @@ class RelaxWBMConfig(C.Config):
 
 
 def _dataset_generator(df: pd.DataFrame):
+    from pymatgen.core import Structure
+    from pymatgen.io.ase import AseAtomsAdaptor
+    from pymatviz.enums import Key
+
     for idx, row in df.iterrows():
         # Get the material id
         material_id = row[Key.mat_id.value]
@@ -139,6 +140,8 @@ def _dataset_generator(df: pd.DataFrame):
 @torch.inference_mode()
 @torch.no_grad()
 def predict(data: Batch, lightning_module: Module):
+    from matbench_discovery.energy import get_e_form_per_atom
+
     # Make sure the expected properties are in the right format
     if "tags" not in data or data.tags is None or (data.tags == 0).all():
         data.tags = torch.full_like(data.atomic_numbers, 2, dtype=torch.long)
@@ -169,7 +172,10 @@ def relax_wbm_run_fn(
     config: RelaxWBMConfig,
     results_dir: Path,
     update_lm_config: Callable[[Config], Config] | None = None,
-):  # Resolve the current device
+):
+    from pymatviz.enums import Key
+
+    # Resolve the current device
     device = config._resolve_device()
 
     # Load the model from the checkpoint
