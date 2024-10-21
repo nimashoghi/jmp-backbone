@@ -64,7 +64,7 @@ config = config.finalize()
 nu.display(config)
 
 data_config = jc.MPTrjAlexOMAT24DataModuleConfig.draft()
-data_config.batch_size = 32
+data_config.batch_size = 16
 data_config.num_workers = 8
 data_config.subsample_val = 5_000
 data_config.with_linear_reference_("mptrj-salex")
@@ -109,9 +109,9 @@ _ = runner.submit_lsf(
         "summit": True,
         "project": "MAT273",
         "queue": "batch",
-        "nodes": 16,
+        "nodes": 256,
         "rs_per_node": 6,
-        "walltime": datetime.timedelta(hours=24.0),
+        "walltime": datetime.timedelta(hours=12.0),
     },
     snapshot=True,
 )
