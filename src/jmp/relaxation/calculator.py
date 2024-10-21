@@ -5,7 +5,6 @@ from typing import Protocol, runtime_checkable
 import torch
 from ase import Atoms
 from ase.calculators.calculator import Calculator
-from fairchem.core.preprocessing import AtomsToGraphs
 from torch_geometric.data import Batch
 from typing_extensions import override
 
@@ -49,6 +48,8 @@ class JMPCalculator(Calculator):
 
         self.predict = predict
         del predict
+
+        from fairchem.core.preprocessing import AtomsToGraphs
 
         self.a2g = AtomsToGraphs(
             r_energy=False,
