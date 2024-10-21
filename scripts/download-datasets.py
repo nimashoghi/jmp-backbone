@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import jmp.config as jc
+from jmp.lightning_datamodule import MPTrjAlexOMAT24DataModule
 
 
 def main():
@@ -12,6 +11,7 @@ def main():
     data_config.with_linear_reference_("mptrj-salex")
     data_config.subsample_val = 5_000
     data_config = data_config.finalize()
+    MPTrjAlexOMAT24DataModule(data_config).prepare_data()
 
 
 if __name__ == "__main__":
