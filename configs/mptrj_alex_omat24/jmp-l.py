@@ -109,7 +109,7 @@ _ = runner.submit_lsf(
         "summit": True,
         "project": "MAT273",
         "queue": "batch-hm",
-        "nodes": 40,
+        "nodes": 16,
         "rs_per_node": 6,
         "walltime": datetime.timedelta(hours=24.0),
     },
