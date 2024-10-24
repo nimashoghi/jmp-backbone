@@ -29,14 +29,14 @@ config.ignore_graph_generation_errors = True
 
 # Optimization and learning rate scheduling
 config.optimization = jc.OptimizationConfig.draft()
-config.optimization.optimizer = nt.config.AdamWConfig(lr=8.0e-5, weight_decay=0.001)
+config.optimization.optimizer = nt.configs.AdamWConfig(lr=8.0e-5, weight_decay=0.001)
 config.optimization.separate_lr_multiplier = jc.SeparateLRMultiplierConfig(
     backbone_multiplier=0.25, rest_multiplier=1.0
 )
-config.optimization.lr_scheduler = nt.config.LinearWarmupCosineDecayLRSchedulerConfig(
-    warmup_duration=nt.config.StepsConfig(value=5000),
+config.optimization.lr_scheduler = nt.configs.LinearWarmupCosineDecayLRSchedulerConfig(
+    warmup_duration=nt.configs.StepsConfig(value=5000),
     warmup_start_lr_factor=0.001,
-    max_duration=nt.config.StepsConfig(value=1_000_000),
+    max_duration=nt.configs.StepsConfig(value=1_000_000),
     min_lr_factor=0.1,
 )
 
@@ -48,14 +48,14 @@ config.targets.stress = jc.StressTargetConfig(num_layers=5)
 config.targets.energy_loss_coefficient = 20.0
 config.targets.force_loss_coefficient = 20.0
 config.targets.stress_loss_coefficient = 1.0
-config.primary_metric = nt.config.MetricConfig(name="energy_mae", mode="min")
+config.primary_metric = nt.configs.MetricConfig(name="energy_mae", mode="min")
 
 # General trainer settings
 config.trainer.val_check_interval = 0.25
 config.trainer.precision = "16-mixed-auto"
 config.trainer.set_float32_matmul_precision = "medium"
 config.trainer.optimizer.log_grad_norm = True
-config.trainer.optimizer.gradient_clipping = nt.config.GradientClippingConfig(
+config.trainer.optimizer.gradient_clipping = nt.configs.GradientClippingConfig(
     value=100.0, algorithm="norm"
 )
 config.trainer.hf_hub.enable_()

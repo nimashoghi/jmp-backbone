@@ -51,10 +51,10 @@ class SeparateLRMultiplierConfig(C.Config):
 
 
 class OptimizationConfig(C.Config):
-    optimizer: nt.config.OptimizerConfig
+    optimizer: nt.configs.OptimizerConfig
     """Optimizer configuration."""
 
-    lr_scheduler: nt.config.LRSchedulerConfig | None
+    lr_scheduler: nt.configs.LRSchedulerConfig | None
     """Learning rate scheduler configuration."""
 
     separate_lr_multiplier: SeparateLRMultiplierConfig | None = None
