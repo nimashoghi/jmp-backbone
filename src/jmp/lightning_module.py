@@ -20,7 +20,11 @@ from .models.gemnet.graph import GraphComputer, GraphComputerConfig
 from .nn.energy_head import EnergyTargetConfig
 from .nn.force_head import ForceTargetConfig
 from .nn.stress_head import StressTargetConfig
-from .referencing import IdentityReferencerConfig, ReferencerConfig
+from .referencing import (
+    IdentityReferencerConfig,
+    PerAtomReferencerConfig,
+    ReferencerConfig,
+)
 from .types import Predictions
 
 log = logging.getLogger(__name__)
@@ -80,6 +84,15 @@ class Config(C.Config):
     energy_referencer: ReferencerConfig = IdentityReferencerConfig()
     """Energy referencing configuration."""
 
+    def __post_init__(self):
+        super().__post_init__()
+
+        if True:
+            self.energy_referencer = PerAtomReferencerConfig.linear_reference(
+                "mptrj-salex"
+            )
+            self.pretrained_ckpt = CE.CachedPath(uri="/mnt/shared/checkpoints/jmp-s.pt")
+
 
 class Module(nt.LightningModuleBase[Config]):
     @override
@@ -133,6 +146,7 @@ class Module(nt.LightningModuleBase[Config]):
 
         # Energy referencing
         self.energy_referencer = self.hparams.energy_referencer.create_referencer()
+        log.info(f"Energy referencer: {self.energy_referencer}")
 
         # Metrics
         self.train_metrics = ForceFieldMetrics()
@@ -155,7 +169,7 @@ class Module(nt.LightningModuleBase[Config]):
         self,
         batch: Batch,
         *,
-        convert_stress_to_ev_a3: bool = True,
+        convert_stress_to_ev_a3: bool = False,
         energy_kind: Literal["total", "referenced"] = "total",
     ) -> Predictions:
         """
@@ -188,7 +202,8 @@ class Module(nt.LightningModuleBase[Config]):
         match energy_kind:
             case "total":
                 outputs["energy"] = self.energy_referencer.dereference(
-                    outputs["energy"], batch.atomic_numbers
+                    outputs["energy"],
+                    batch.atomic_numbers,
                 )
             case "referenced":
                 # Nothing to do here, the energy referencing is already applied in the forward

@@ -4,7 +4,7 @@ from typing import Protocol, runtime_checkable
 
 import torch
 from ase import Atoms
-from ase.calculators.calculator import Calculator
+from ase.calculators.calculator import Calculator, all_changes
 from torch_geometric.data import Batch
 from typing_extensions import override
 
@@ -24,7 +24,7 @@ def default_predict(data: Batch, lightning_module: Module) -> Predictions:
     data.tags = data.tags.long()
     data.fixed = data.fixed.bool()
 
-    predictions = lightning_module.predict(data)
+    predictions = lightning_module.predict(data, energy_kind="total")
     return predictions
 
 
@@ -70,9 +70,19 @@ class JMPCalculator(Calculator):
             self.implemented_properties.append("stress")
 
     @override
-    def calculate(self, atoms: Atoms | Batch, properties, system_changes) -> None:
+    def calculate(
+        self,
+        atoms: Atoms | Batch | None = None,
+        properties=["energy"],
+        system_changes=all_changes,
+    ) -> None:
         """Calculate implemented properties for a single Atoms object or a Batch of them."""
         super().calculate(atoms, properties, system_changes)
+
+        if atoms is None:
+            atoms = self.atoms
+        if atoms is None:
+            raise ValueError("Atoms object or Batch required")
 
         if isinstance(atoms, Atoms):
             data_object = self.a2g.convert(atoms)

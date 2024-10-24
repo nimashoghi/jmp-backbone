@@ -252,7 +252,9 @@ class MPTrjAlexOMAT24Dataset(Dataset, nt.data.balanced_batch_sampler.DatasetWith
         return data
 
 
-class MPTrjAlexOMAT24DataModule(nt.LightningDataModuleBase):
+class MPTrjAlexOMAT24DataModule(
+    nt.LightningDataModuleBase[MPTrjAlexOMAT24DataModuleConfig],
+):
     @override
     @classmethod
     def hparams_cls(cls):
