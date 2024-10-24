@@ -4,12 +4,12 @@ from logging import getLogger
 from typing import Literal
 
 import nshconfig as C
+import nshtrainer as nt
 import nshutils.typecheck as tc
 import torch
 import torch.nn as nn
 from einops import rearrange
 from jmppeft.modules.torch_scatter_polyfill import scatter
-from nshtrainer.ll.nn import MLP
 from torch_geometric.data.data import BaseData
 from typing_extensions import TypedDict, override
 
@@ -62,7 +62,7 @@ class EnergyOutputHead(nn.Module):
         super().__init__()
 
         self.config = config
-        self.out_mlp_node = MLP(
+        self.out_mlp_node = nt.nn.MLP(
             ([d_model] * self.config.num_mlps) + [1],
             activation=activation_cls,
         )
@@ -82,7 +82,7 @@ class EnergyOutputHead(nn.Module):
         nn.init.zeros_(self.per_atom_shifts.weight)
 
         if self.config.edge_level_energies:
-            self.out_mlp_edge = MLP(
+            self.out_mlp_edge = nt.nn.MLP(
                 ([d_model_edge] * self.config.num_mlps) + [1],
                 activation=activation_cls,
             )

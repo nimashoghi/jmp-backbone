@@ -61,7 +61,7 @@ class OptimizationConfig(C.Config):
     """Separate learning rate multipliers for the backbone and heads."""
 
 
-class Config(nt.BaseConfig):
+class Config(C.Config):
     pretrained_ckpt: CE.CachedPath
     """Path to the pretrained checkpoint."""
 
@@ -84,7 +84,7 @@ class Config(nt.BaseConfig):
 class Module(nt.LightningModuleBase[Config]):
     @override
     @classmethod
-    def config_cls(cls):
+    def hparams_cls(cls):
         return Config
 
     @override
@@ -93,7 +93,7 @@ class Module(nt.LightningModuleBase[Config]):
 
         # Backbone
         self.backbone = GemNetOCBackbone.from_pretrained_ckpt(
-            self.config.pretrained_ckpt.resolve()
+            self.hparams.pretrained_ckpt.resolve()
         )
         d_model = self.backbone.config.emb_size_atom
         d_model_edge = self.backbone.config.emb_size_edge
@@ -110,40 +110,34 @@ class Module(nt.LightningModuleBase[Config]):
                 )
 
         # Output heads
-        self.energy_head = self.config.targets.energy.create_model(
+        self.energy_head = self.hparams.targets.energy.create_model(
             d_model=d_model,
             d_model_edge=d_model_edge,
             activation_cls=activation_cls,
         )
-        self.force_head = self.config.targets.force.create_model(
+        self.force_head = self.hparams.targets.force.create_model(
             d_model_edge=d_model_edge,
             activation_cls=activation_cls,
         )
-        self.stress_head = self.config.targets.stress.create_model(
+        self.stress_head = self.hparams.targets.stress.create_model(
             d_model_edge=d_model_edge,
             activation_cls=activation_cls,
         )
 
         # Graph computer
         self.graph_computer = GraphComputer(
-            self.config.graph_computer,
+            self.hparams.graph_computer,
             self.backbone.config,
             # self._process_aint_graph_transform,
         )
 
         # Energy referencing
-        self.energy_referencer = self.config.energy_referencer.create_referencer()
+        self.energy_referencer = self.hparams.energy_referencer.create_referencer()
 
         # Metrics
         self.train_metrics = ForceFieldMetrics()
         self.val_metrics = ForceFieldMetrics()
         self.test_metrics = ForceFieldMetrics()
-
-    def reference_energy(self, data: Batch):
-        if self.config.energy_referencing.per_atom_reference is not None:
-            return torch.tensor(
-                self.config.energy_referencing.per_atom_reference, device=data.x.device
-            )
 
     @override
     def forward(self, data: Batch):
@@ -221,21 +215,21 @@ class Module(nt.LightningModuleBase[Config]):
         # Energy loss
         energy_loss = (
             F.l1_loss(energy_hat, energy_true)
-            * self.config.targets.energy_loss_coefficient
+            * self.hparams.targets.energy_loss_coefficient
         )
         losses.append(energy_loss)
 
         # Force loss
         force_loss = (
             F.l1_loss(forces_hat, forces_true)
-            * self.config.targets.force_loss_coefficient
+            * self.hparams.targets.force_loss_coefficient
         )
         losses.append(force_loss)
 
         # Stress loss
         stress_loss = (
             F.l1_loss(stress_hat, stress_true)
-            * self.config.targets.stress_loss_coefficient
+            * self.hparams.targets.stress_loss_coefficient
         )
         losses.append(stress_loss)
 
@@ -245,7 +239,7 @@ class Module(nt.LightningModuleBase[Config]):
 
     def _common_step(self, data: Batch, metrics: ForceFieldMetrics):
         # Compute graphs
-        if self.config.ignore_graph_generation_errors:
+        if self.hparams.ignore_graph_generation_errors:
             try:
                 data = self.graph_computer(data)
             except Exception as e:
@@ -296,7 +290,7 @@ class Module(nt.LightningModuleBase[Config]):
 
     @override
     def configure_optimizers(self):
-        config = self.config.optimization
+        config = self.hparams.optimization
 
         if (lr_mult := config.separate_lr_multiplier) is None:
             optimizer = config.optimizer.create_optimizer(self.parameters())

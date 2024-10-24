@@ -4,10 +4,10 @@ from logging import getLogger
 from typing import Literal
 
 import nshconfig as C
+import nshtrainer as nt
 import torch
 import torch.nn as nn
 from jmppeft.modules.torch_scatter_polyfill import scatter
-from nshtrainer.ll.nn import MLP
 from torch_geometric.data.data import BaseData
 from typing_extensions import TypedDict, override
 
@@ -56,7 +56,7 @@ class ForceOutputHead(nn.Module):
 
         self.config = config
         self.d_model_edge = d_model_edge
-        self.out_mlp = MLP(
+        self.out_mlp = nt.nn.MLP(
             ([self.d_model_edge] * self.config.num_mlps) + [1],
             activation=activation_cls,
         )

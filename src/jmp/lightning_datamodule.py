@@ -254,21 +254,19 @@ class MPTrjAlexOMAT24Dataset(Dataset, nt.data.balanced_batch_sampler.DatasetWith
 
 class MPTrjAlexOMAT24DataModule(nt.LightningDataModuleBase):
     @override
-    def __init__(self, config: MPTrjAlexOMAT24DataModuleConfig):
-        super().__init__()
-
-        self.config = config
-        del config
+    @classmethod
+    def hparams_cls(cls):
+        return MPTrjAlexOMAT24DataModuleConfig
 
     @override
     def prepare_data(self):
         super().prepare_data()
 
         # Make sure all datasets are downloaded
-        MPTrjAlexOMAT24Dataset.ensure_downloaded(self.config)
+        MPTrjAlexOMAT24Dataset.ensure_downloaded(self.hparams)
 
     def _dataset(self, split: Literal["train", "val"]):
-        return MPTrjAlexOMAT24Dataset(self.config, split=split)
+        return MPTrjAlexOMAT24Dataset(self.hparams, split=split)
 
     @staticmethod
     def _collate_fn(data_list: list[Data]):
@@ -276,12 +274,12 @@ class MPTrjAlexOMAT24DataModule(nt.LightningDataModuleBase):
 
     @override
     def train_dataloader(self):
-        dataset = MPTrjAlexOMAT24Dataset(self.config, split="train")
+        dataset = MPTrjAlexOMAT24Dataset(self.hparams, split="train")
         dl = DataLoader(
             dataset,
-            batch_size=self.config.batch_size,
-            num_workers=self.config.num_workers,
-            pin_memory=self.config.pin_memory,
+            batch_size=self.hparams.batch_size,
+            num_workers=self.hparams.num_workers,
+            pin_memory=self.hparams.pin_memory,
             shuffle=True,
             collate_fn=self._collate_fn,
         )
@@ -289,12 +287,12 @@ class MPTrjAlexOMAT24DataModule(nt.LightningDataModuleBase):
 
     @override
     def val_dataloader(self):
-        dataset = MPTrjAlexOMAT24Dataset(self.config, split="val")
+        dataset = MPTrjAlexOMAT24Dataset(self.hparams, split="val")
         dl = DataLoader(
             dataset,
-            batch_size=self.config.batch_size,
-            num_workers=self.config.num_workers,
-            pin_memory=self.config.pin_memory,
+            batch_size=self.hparams.batch_size,
+            num_workers=self.hparams.num_workers,
+            pin_memory=self.hparams.pin_memory,
             shuffle=False,
             collate_fn=self._collate_fn,
         )
