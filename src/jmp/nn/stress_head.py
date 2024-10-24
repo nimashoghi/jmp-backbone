@@ -242,7 +242,7 @@ class StressTargetConfig(C.Config):
         activation_cls: type[nn.Module],
     ):
         return StressOutputHead(
-            config=self,
+            hparams=self,
             d_model_edge=d_model_edge,
             activation_cls=activation_cls,
         )
@@ -257,20 +257,20 @@ class StressOutputHead(nn.Module):
     @override
     def __init__(
         self,
-        config: StressTargetConfig,
+        hparams: StressTargetConfig,
         d_model_edge: int,
         activation_cls: type[nn.Module],
     ):
         super().__init__()
 
-        self.config = config
-        del config
+        self.hparams = hparams
+        del hparams
 
         self.block = _Rank2DecompositionEdgeBlock(
             d_model_edge,
             edge_level=True,
-            extensive=self.config.extensive,
-            num_layers=self.config.num_layers,
+            extensive=self.hparams.extensive,
+            num_layers=self.hparams.num_layers,
             activation_cls=activation_cls,
         )
 

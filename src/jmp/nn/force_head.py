@@ -33,7 +33,7 @@ class ForceTargetConfig(C.Config):
         activation_cls: type[nn.Module],
     ):
         return ForceOutputHead(
-            config=self,
+            hparams=self,
             d_model_edge=d_model_edge,
             activation_cls=activation_cls,
         )
@@ -48,16 +48,18 @@ class ForceOutputHead(nn.Module):
     @override
     def __init__(
         self,
-        config: ForceTargetConfig,
+        hparams: ForceTargetConfig,
         d_model_edge: int,
         activation_cls: type[nn.Module],
     ):
         super().__init__()
 
-        self.config = config
+        self.hparams = hparams
+        del hparams
+
         self.d_model_edge = d_model_edge
         self.out_mlp = nt.nn.MLP(
-            ([self.d_model_edge] * self.config.num_mlps) + [1],
+            ([self.d_model_edge] * self.hparams.num_mlps) + [1],
             activation=activation_cls,
         )
 
@@ -75,6 +77,6 @@ class ForceOutputHead(nn.Module):
             backbone_output["idx_t"],
             dim=0,
             dim_size=n_atoms,
-            reduce=self.config.reduction,
+            reduce=self.hparams.reduction,
         )
         return output

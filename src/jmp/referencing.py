@@ -13,13 +13,6 @@ from typing_extensions import override
 log = logging.getLogger(__name__)
 
 
-class IdentityReferencerConfig(C.Config):
-    name: Literal["identity_referencer"] = "identity_referencer"
-
-    def create_referencer(self):
-        return IdentityReferencer(self)
-
-
 class ReferencerBaseModule(nn.Module, ABC):
     @abstractmethod
     def reference(
@@ -38,13 +31,20 @@ class ReferencerBaseModule(nn.Module, ABC):
         pass
 
 
+class IdentityReferencerConfig(C.Config):
+    name: Literal["identity_referencer"] = "identity_referencer"
+
+    def create_referencer(self):
+        return IdentityReferencer(self)
+
+
 class IdentityReferencer(ReferencerBaseModule):
     @override
-    def __init__(self, config: IdentityReferencerConfig):
+    def __init__(self, hparams: IdentityReferencerConfig):
         super().__init__()
 
-        self.config = config
-        del config
+        self.hparams = hparams
+        del hparams
 
     def reference(
         self,
@@ -85,13 +85,13 @@ class PerAtomReferencer(ReferencerBaseModule):
     per_atom_references: tc.Float[torch.Tensor, "max_num_atoms"]
 
     @override
-    def __init__(self, config: PerAtomReferencerConfig):
+    def __init__(self, hparams: PerAtomReferencerConfig):
         super().__init__()
 
-        self.config = config
-        del config
+        self.hparams = hparams
+        del hparams
 
-        per_atom_references = torch.tensor(self.config.references, dtype=torch.float)
+        per_atom_references = torch.tensor(self.hparams.references, dtype=torch.float)
         self.register_buffer(
             "per_atom_references", per_atom_references, persistent=False
         )

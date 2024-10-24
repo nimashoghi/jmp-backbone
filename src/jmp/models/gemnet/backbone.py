@@ -198,7 +198,7 @@ class GemNetOCBackbone(nn.Module):
 
     def __init__(
         self,
-        config: BackboneConfig,
+        hparams: BackboneConfig,
         *,
         num_targets: int,
         num_spherical: int,
@@ -253,7 +253,7 @@ class GemNetOCBackbone(nn.Module):
 
         print("Unrecognized arguments: ", kwargs.keys())
 
-        self.config = config
+        self.hparams = hparams
 
         self.num_targets = num_targets
         assert num_blocks > 0
@@ -280,13 +280,13 @@ class GemNetOCBackbone(nn.Module):
         self.regress_energy = regress_energy
         self.force_scaler = ForceScaler(enabled=scale_backprop_forces)
 
-        self.bases = Bases(BasesConfig.from_backbone_config(self.config))
-        if not self.config.unique_basis_per_layer:
+        self.bases = Bases(BasesConfig.from_backbone_config(self.hparams))
+        if not self.hparams.unique_basis_per_layer:
             self.shared_parameters.extend(self.bases.shared_parameters)
         else:
             self.per_layer_bases = TypedModuleList(
                 [
-                    Bases(BasesConfig.from_backbone_config(self.config))
+                    Bases(BasesConfig.from_backbone_config(self.hparams))
                     for _ in range(self.num_blocks)
                 ]
             )
@@ -324,7 +324,7 @@ class GemNetOCBackbone(nn.Module):
                     edge_atom_interaction=edge_atom_interaction,
                     atom_interaction=atom_interaction,
                     activation=activation,
-                    dropout=self.config.dropout,
+                    dropout=self.hparams.dropout,
                 )
             )
         self.int_blocks = nn.ModuleList(int_blocks)
@@ -339,8 +339,8 @@ class GemNetOCBackbone(nn.Module):
                     nHidden_afteratom=num_output_afteratom,
                     activation=activation,
                     direct_forces=direct_forces,
-                    edge_dropout=self.config.edge_dropout,
-                    dropout=self.config.dropout,
+                    edge_dropout=self.hparams.edge_dropout,
+                    dropout=self.hparams.dropout,
                 )
             )
         self.out_blocks = nn.ModuleList(out_blocks)
@@ -387,7 +387,7 @@ class GemNetOCBackbone(nn.Module):
                 num_blocks=num_blocks,
                 num_global_out_layers=num_global_out_layers,
                 activation=activation,
-                dropout=self.config.dropout,
+                dropout=self.hparams.dropout,
             )
 
         load_scales_compat(self, scale_file)
@@ -712,7 +712,7 @@ class GemNetOCBackbone(nn.Module):
         xs_E, xs_F = [x_E], [x_F]
 
         for i in range(self.num_blocks):
-            if self.config.unique_basis_per_layer:
+            if self.hparams.unique_basis_per_layer:
                 bases: BasesOutput = self.per_layer_bases[i](
                     data,
                     h=h,

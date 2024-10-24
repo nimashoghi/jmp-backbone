@@ -15,6 +15,7 @@ if TYPE_CHECKING:
         IdentityReferencerConfig as IdentityReferencerConfig,
     )
     from jmp.lightning_module import OptimizationConfig as OptimizationConfig
+    from jmp.lightning_module import PerAtomReferencerConfig as PerAtomReferencerConfig
     from jmp.lightning_module import ReferencerConfig as ReferencerConfig
     from jmp.lightning_module import (
         SeparateLRMultiplierConfig as SeparateLRMultiplierConfig,
@@ -42,6 +43,10 @@ else:
             ).IdentityReferencerConfig
         if name == "OptimizationConfig":
             return importlib.import_module("jmp.lightning_module").OptimizationConfig
+        if name == "PerAtomReferencerConfig":
+            return importlib.import_module(
+                "jmp.lightning_module"
+            ).PerAtomReferencerConfig
         if name == "SeparateLRMultiplierConfig":
             return importlib.import_module(
                 "jmp.lightning_module"

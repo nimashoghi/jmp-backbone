@@ -61,7 +61,7 @@ class JMPCalculator(Calculator):
 
         # Determine which properties are implemented
         self.implemented_properties: list[str] = []
-        targets = self.lightning_module.config.targets
+        targets = self.lightning_module.hparams.targets
         if targets.energy:
             self.implemented_properties.append("energy")
         if targets.force:

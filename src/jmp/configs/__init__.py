@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from jmp.lightning_datamodule import (
         MPTrjAlexOMAT24DataModuleConfig as MPTrjAlexOMAT24DataModuleConfig,
     )
+    from jmp.lightning_module import Config as Config
     from jmp.lightning_module import GraphComputerConfig as GraphComputerConfig
     from jmp.lightning_module import OptimizationConfig as OptimizationConfig
     from jmp.lightning_module import (
@@ -27,7 +28,6 @@ if TYPE_CHECKING:
     from jmp.referencing import IdentityReferencerConfig as IdentityReferencerConfig
     from jmp.referencing import PerAtomReferencerConfig as PerAtomReferencerConfig
     from jmp.referencing import ReferencerConfig as ReferencerConfig
-    from jmp.relaxation.wbm import Config as Config
     from jmp.relaxation.wbm import RelaxerConfig as RelaxerConfig
     from jmp.relaxation.wbm import RelaxWBMConfig as RelaxWBMConfig
 else:
@@ -42,7 +42,7 @@ else:
         if name == "BasesConfig":
             return importlib.import_module("jmp.models.gemnet.bases").BasesConfig
         if name == "Config":
-            return importlib.import_module("jmp.relaxation.wbm").Config
+            return importlib.import_module("jmp.lightning_module").Config
         if name == "CutoffsConfig":
             return importlib.import_module("jmp.models.gemnet.graph").CutoffsConfig
         if name == "DatasetConfig":

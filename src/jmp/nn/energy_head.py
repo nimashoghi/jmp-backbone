@@ -43,7 +43,7 @@ class EnergyTargetConfig(C.Config):
         activation_cls: type[nn.Module],
     ):
         return EnergyOutputHead(
-            config=self,
+            hparams=self,
             d_model=d_model,
             d_model_edge=d_model_edge,
             activation_cls=activation_cls,
@@ -54,40 +54,42 @@ class EnergyOutputHead(nn.Module):
     @override
     def __init__(
         self,
-        config: EnergyTargetConfig,
+        hparams: EnergyTargetConfig,
         d_model: int,
         d_model_edge: int,
         activation_cls: type[nn.Module],
     ):
         super().__init__()
 
-        self.config = config
+        self.hparams = hparams
+        del hparams
+
         self.out_mlp_node = nt.nn.MLP(
-            ([d_model] * self.config.num_mlps) + [1],
+            ([d_model] * self.hparams.num_mlps) + [1],
             activation=activation_cls,
         )
 
         self.per_atom_scales = nn.Embedding(
-            self.config.max_atomic_number + 1,
+            self.hparams.max_atomic_number + 1,
             1,
             padding_idx=0,
         )
         nn.init.ones_(self.per_atom_scales.weight)
 
         self.per_atom_shifts = nn.Embedding(
-            self.config.max_atomic_number + 1,
+            self.hparams.max_atomic_number + 1,
             1,
             padding_idx=0,
         )
         nn.init.zeros_(self.per_atom_shifts.weight)
 
-        if self.config.edge_level_energies:
+        if self.hparams.edge_level_energies:
             self.out_mlp_edge = nt.nn.MLP(
-                ([d_model_edge] * self.config.num_mlps) + [1],
+                ([d_model_edge] * self.hparams.num_mlps) + [1],
                 activation=activation_cls,
             )
 
-            num_atom_pairs = (self.config.max_atomic_number + 1) ** 2
+            num_atom_pairs = (self.hparams.max_atomic_number + 1) ** 2
             self.pairwise_scales = nn.Embedding(num_atom_pairs, 1, padding_idx=0)
             nn.init.ones_(self.pairwise_scales.weight)
 
@@ -105,7 +107,7 @@ class EnergyOutputHead(nn.Module):
         per_atom_energies = self.out_mlp_node(per_atom_energies)
         tc.tassert(tc.Float[torch.Tensor, "n 1"], per_atom_energies)
 
-        if self.config.edge_level_energies:
+        if self.hparams.edge_level_energies:
             # Compute edge-level energies from edge embeddings
             per_edge_energies = backbone_output["forces"]
             tc.tassert(tc.Float[torch.Tensor, "e d_model_edge"], per_edge_energies)
@@ -117,7 +119,7 @@ class EnergyOutputHead(nn.Module):
             idx_s, idx_t = backbone_output["idx_s"], backbone_output["idx_t"]
             tc.tassert(tc.Int[torch.Tensor, "e"], (idx_s, idx_t))
             pair_idx = (
-                atomic_numbers[idx_s] * (self.config.max_atomic_number + 1)
+                atomic_numbers[idx_s] * (self.hparams.max_atomic_number + 1)
                 + atomic_numbers[idx_t]
             )
             tc.tassert(tc.Int[torch.Tensor, "e"], pair_idx)
@@ -135,7 +137,7 @@ class EnergyOutputHead(nn.Module):
                 idx_t,
                 dim=0,
                 dim_size=atomic_numbers.shape[0],
-                reduce=self.config.reduction,
+                reduce=self.hparams.reduction,
             )
             tc.tassert(tc.Float[torch.Tensor, "n 1"], per_atom_energies_per_edge)
             per_atom_energies = per_atom_energies + per_atom_energies_per_edge
@@ -152,7 +154,7 @@ class EnergyOutputHead(nn.Module):
             data.batch,
             dim=0,
             dim_size=data.num_graphs,
-            reduce=self.config.reduction,
+            reduce=self.hparams.reduction,
         )
         tc.tassert(tc.Float[torch.Tensor, "b 1"], per_system_energies)
 

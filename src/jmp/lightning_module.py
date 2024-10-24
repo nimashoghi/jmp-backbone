@@ -108,9 +108,9 @@ class Module(nt.LightningModuleBase[Config]):
         self.backbone = GemNetOCBackbone.from_pretrained_ckpt(
             self.hparams.pretrained_ckpt.resolve()
         )
-        d_model = self.backbone.config.emb_size_atom
-        d_model_edge = self.backbone.config.emb_size_edge
-        match self.backbone.config.activation:
+        d_model = self.backbone.hparams.emb_size_atom
+        d_model_edge = self.backbone.hparams.emb_size_edge
+        match self.backbone.hparams.activation:
             case "scaled_silu" | "scaled_swish":
                 from .models.gemnet.layers.base_layers import ScaledSiLU
 
@@ -119,7 +119,7 @@ class Module(nt.LightningModuleBase[Config]):
                 activation_cls = nn.SiLU
             case _:
                 raise ValueError(
-                    f"Unknown activation: {self.backbone.config.activation}"
+                    f"Unknown activation: {self.backbone.hparams.activation}"
                 )
 
         # Output heads
@@ -140,7 +140,7 @@ class Module(nt.LightningModuleBase[Config]):
         # Graph computer
         self.graph_computer = GraphComputer(
             self.hparams.graph_computer,
-            self.backbone.config,
+            self.backbone.hparams,
             # self._process_aint_graph_transform,
         )
 
