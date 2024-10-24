@@ -1,6 +1,6 @@
 from __future__ import annotations
 
 try:
-    from . import config as config
+    from . import configs as configs
 except BaseException:
     pass

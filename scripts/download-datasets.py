@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import jmp.config as jc
+import jmp.configs as jc
 from jmp.lightning_datamodule import MPTrjAlexOMAT24DataModule
 
 

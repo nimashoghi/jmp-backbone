@@ -3,10 +3,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import jmp.config as jc
 import nshconfig_extra as CE
 import nshtrainer as nt
 import nshutils as nu
+
+import jmp.configs as jc
 
 base_dir = Path("/gpfs/alpine2/proj-shared/mat273/nimashoghi/")
 working_dir = base_dir / "experiment-data/"

@@ -3,8 +3,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import jmp.config as jc
 import nshutils as nu
+
+import jmp.configs as jc
 
 ckpt_path = Path(
     "/net/csefiles/coc-fung-cluster/nima/shared/experiment-data/nshtrainer/3ico36yf/checkpoint/last/epoch0-step57444.ckpt"
@@ -22,6 +23,7 @@ nu.display(config)
 
 # %%
 import nshrunner as nr
+
 from jmp.relaxation.wbm import relax_wbm_run_fn
 
 
