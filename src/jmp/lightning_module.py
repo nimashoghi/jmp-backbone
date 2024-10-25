@@ -15,7 +15,7 @@ from torch_geometric.data import Batch
 from typing_extensions import assert_never, override
 
 from .metrics import ForceFieldMetrics
-from .models.gemnet.backbone import GemNetOCBackbone
+from .models.gemnet.backbone import GemNetOCBackbone, GOCBackboneOutput
 from .models.gemnet.graph import GraphComputer, GraphComputerConfig
 from .nn.energy_head import EnergyTargetConfig
 from .nn.force_head import ForceTargetConfig
@@ -164,6 +164,16 @@ class Module(nt.LightningModuleBase[Config]):
             "stress": self.stress_head(output_head_input),
         }
         return outputs
+
+    def embeddings(self, batch: Batch):
+        # Move the batch to the correct device
+        batch = move_data_to_device(batch, self.device)
+
+        # Compute graphs
+        batch = self.graph_computer(batch)
+
+        embeddings: GOCBackboneOutput = self.backbone(batch)
+        return embeddings
 
     def predict(
         self,
