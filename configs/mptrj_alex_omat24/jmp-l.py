@@ -13,6 +13,7 @@ cwd = base_dir / "experiment-data/"
 ckpt_path = base_dir / "checkpoints/jmp-l.pt"
 env = {
     "HF_HOME": "/gpfs/alpine2/proj-shared/mat273/nimashoghi/hf",
+    "HF_DATASETS_OFFLINE": "1",
 }
 
 model_hparams = jc.Config.draft()
@@ -120,7 +121,7 @@ for config, trainer_config, data_config in runs:
 
     runs_summit.append((config, trainer_config, data_config))
 
-runner = nr.Runner(run, nr.RunnerConfig(working_dir=cwd))
+runner = nr.Runner(run, nr.RunnerConfig(working_dir=cwd, env=env))
 _ = runner.submit_lsf(
     runs_summit,
     {
@@ -130,6 +131,7 @@ _ = runner.submit_lsf(
         "nodes": 16,
         "rs_per_node": 6,
         "walltime": datetime.timedelta(hours=24.0),
+        "environment": env,
     },
     snapshot=True,
 )
