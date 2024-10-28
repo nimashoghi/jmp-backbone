@@ -3,10 +3,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import jmp.configs as jc
 import nshconfig_extra as CE
 import nshtrainer as nt
-
-import jmp.configs as jc
 
 cwd = Path("/net/csefiles/coc-fung-cluster/nima/shared/experiment-data/")
 ckpt_path = Path("/net/csefiles/coc-fung-cluster/nima/shared/checkpoints/jmp-s.pt")
@@ -86,11 +85,10 @@ data_hparams.salex.local_path = Path("/storage/nima/salex-ocp/hf/")
 data_hparams.omat24.local_path = Path("/storage/nima/omat24/hf/")
 data_hparams = data_hparams.finalize()
 
-runs = [(model_hparams, trainer_hparams, data_hparams)]
+runs = [(model_hparams, trainer_hparams, data_hparams, continue_ckpt_path)]
 
 # %%
 import torch
-
 from jmp.lightning_datamodule import MPTrjAlexOMAT24DataModule
 from jmp.lightning_module import Module
 
@@ -107,7 +105,9 @@ def run(
     if continue_ckpt_path is not None:
         ckpt = torch.load(continue_ckpt_path.resolve(), map_location="cpu")
         state_dict = {
-            k: v for k, v in ckpt["state_dict"].items() if k.startswith("backbone.")
+            k[len("backbone.") :]: v
+            for k, v in ckpt["state_dict"].items()
+            if k.startswith("backbone.")
         }
         assert state_dict, "No backbone weights found in the checkpoint"
         module.backbone.load_state_dict(state_dict, strict=True)
@@ -122,12 +122,17 @@ def run(
 import nshrunner as nr
 
 runs_fast_dev_run = [
-    (model_hparams, trainer_hparams.with_fast_dev_run(8), data_hparams)
-    for model_hparams, trainer_hparams, data_hparams in runs
+    (
+        model_hparams,
+        trainer_hparams.with_fast_dev_run(8),
+        data_hparams,
+        continue_ckpt_path,
+    )
+    for model_hparams, trainer_hparams, data_hparams, continue_ckpt_path in runs
 ]
 
 runner = nr.Runner(run, nr.RunnerConfig(working_dir=cwd, env=env))
-runner.local(runs)
+runner.local(runs_fast_dev_run)
 
 # %%
 import nshrunner as nr
