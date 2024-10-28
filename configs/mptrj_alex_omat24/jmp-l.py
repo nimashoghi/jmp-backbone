@@ -105,17 +105,6 @@ def run(
 
 
 # %%
-import nshrunner as nr
-
-runs_fast_dev_run = [
-    (model_hparams, trainer_hparams.with_fast_dev_run(8), data_hparams)
-    for model_hparams, trainer_hparams, data_hparams in runs
-]
-
-runner = nr.Runner(run, nr.RunnerConfig(working_dir=cwd, env=env))
-runner.local(runs)
-
-# %%
 import datetime
 
 import nshrunner as nr
