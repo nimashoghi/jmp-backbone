@@ -16,7 +16,7 @@ env = {
 }
 
 model_hparams = jc.Config.draft()
-model_hparams.pretrained_ckpt = CE.CachedPath(uri=ckpt_path)
+model_hparams.pretrained_ckpt = CE.CachedPath.local(ckpt_path)
 model_hparams.graph_computer = jc.GraphComputerConfig(
     cutoffs=jc.CutoffsConfig.from_constant(8.0),
     max_neighbors=jc.MaxNeighborsConfig(main=20, aeaint=20, aint=1000, qint=8),
