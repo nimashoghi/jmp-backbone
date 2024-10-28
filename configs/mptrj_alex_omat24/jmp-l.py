@@ -13,6 +13,7 @@ cwd = base_dir / "experiment-data/"
 ckpt_path = base_dir / "checkpoints/jmp-l.pt"
 env = {
     "HF_HOME": "/gpfs/alpine2/proj-shared/mat273/nimashoghi/hf",
+    "HF_DATASETS_CACHE": "/gpfs/alpine2/proj-shared/mat273/nimashoghi/hf-datasets-cache",
     "HF_DATASETS_OFFLINE": "1",
 }
 
