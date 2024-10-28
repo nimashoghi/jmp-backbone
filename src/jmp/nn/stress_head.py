@@ -223,7 +223,7 @@ class StressTargetConfig(C.Config):
     computed from each node's scalar prediction.
     """
 
-    num_layers: int = 2
+    num_layers: int = 1
     """The number of layers in the output head"""
 
     @property

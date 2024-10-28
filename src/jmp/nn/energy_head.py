@@ -33,7 +33,7 @@ class EnergyTargetConfig(C.Config):
     edge_level_energies: bool = False
     """Whether to use edge level energies."""
 
-    num_mlps: int = 2
+    num_mlps: int = 1
     """Number of MLPs in the output layer."""
 
     def create_model(

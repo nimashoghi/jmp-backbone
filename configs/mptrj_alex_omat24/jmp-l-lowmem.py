@@ -51,7 +51,7 @@ model_hparams.energy_referencer = jc.PerAtomReferencerConfig.linear_reference(
 model_hparams.targets = jc.TargetsConfig.draft()
 model_hparams.targets.energy = jc.EnergyTargetConfig(max_atomic_number=120)
 model_hparams.targets.force = jc.ForceTargetConfig()
-model_hparams.targets.stress = jc.StressTargetConfig(num_layers=2)
+model_hparams.targets.stress = jc.StressTargetConfig()
 model_hparams.targets.energy_loss_coefficient = 100.0
 model_hparams.targets.force_loss_coefficient = 10.0
 model_hparams.targets.stress_loss_coefficient = 1.0
@@ -70,7 +70,6 @@ trainer_hparams.optimizer.log_grad_norm = True
 trainer_hparams.optimizer.gradient_clipping = nt.configs.GradientClippingConfig(
     value=100.0, algorithm="norm"
 )
-trainer_hparams.hf_hub.enable_()
 
 trainer_hparams = trainer_hparams.with_project_root(cwd)
 trainer_hparams = trainer_hparams.finalize()
@@ -80,8 +79,6 @@ data_hparams = jc.MPTrjAlexOMAT24DataModuleConfig.draft()
 data_hparams.batch_size = 16
 data_hparams.num_workers = 8
 data_hparams.subsample_val = 5_000
-data_hparams.salex.local_path = Path("/storage/nima/salex-ocp/hf/")
-data_hparams.omat24.local_path = Path("/storage/nima/omat24/hf/")
 data_hparams.with_linear_reference_("mptrj-salex")
 data_hparams = data_hparams.finalize()
 
@@ -117,6 +114,9 @@ for config, trainer_config, data_config in runs:
     data_config = data_config.model_copy(deep=True)
 
     trainer_config.hf_hub.disable_()
+    trainer_config.hf_hub.save_checkpoints = False
+    trainer_config.hf_hub.save_code = False
+    trainer_config.hf_hub.save_config = False
     if trainer_config.logging.wandb is not None:
         trainer_config.logging.wandb.offline_()
 
