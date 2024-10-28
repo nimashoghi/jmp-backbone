@@ -75,12 +75,11 @@ trainer_hparams = trainer_hparams.finalize()
 
 # Data
 data_hparams = jc.MPTrjAlexOMAT24DataModuleConfig.draft()
-data_hparams.batch_size = 150
+data_hparams.batch_size = 160
 data_hparams.num_workers = 8
 data_hparams.subsample_val = 5_000
 data_hparams.salex.local_path = Path("/storage/nima/salex-ocp/hf/")
 data_hparams.omat24.local_path = Path("/storage/nima/omat24/hf/")
-data_hparams.with_linear_reference_("mptrj-salex")
 data_hparams = data_hparams.finalize()
 
 runs = [(model_hparams, trainer_hparams, data_hparams)]
