@@ -3,13 +3,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import jmp.configs as jc
 import nshconfig_extra as CE
 import nshtrainer as nt
 
-import jmp.configs as jc
-
 cwd = Path("/net/csefiles/coc-fung-cluster/nima/shared/experiment-data/")
-ckpt_path = Path("/net/csefiles/coc-fung-cluster/nima/shared/checkpoints/jmp-l.pt")
+ckpt_path = Path("/net/csefiles/coc-fung-cluster/nima/shared/checkpoints/jmp-s.pt")
 env = {
     "HF_HOME": "/net/csefiles/coc-fung-cluster/nima/shared/cache/huggingface",
 }
@@ -50,7 +49,7 @@ model_hparams.energy_referencer = jc.PerAtomReferencerConfig.linear_reference(
 model_hparams.targets = jc.TargetsConfig.draft()
 model_hparams.targets.energy = jc.EnergyTargetConfig(max_atomic_number=120)
 model_hparams.targets.force = jc.ForceTargetConfig()
-model_hparams.targets.stress = jc.StressTargetConfig(num_layers=2)
+model_hparams.targets.stress = jc.StressTargetConfig(num_layers=1)
 model_hparams.targets.energy_loss_coefficient = 100.0
 model_hparams.targets.force_loss_coefficient = 10.0
 model_hparams.targets.stress_loss_coefficient = 1.0
@@ -58,7 +57,7 @@ model_hparams = model_hparams.finalize()
 
 # General trainer settings
 trainer_hparams = nt.TrainerConfig.draft()
-trainer_hparams.name.append("jmp-l")
+trainer_hparams.name.append("jmp-s")
 trainer_hparams.project = "mptrj-alex-omat24"
 
 trainer_hparams.primary_metric = nt.configs.MetricConfig(name="energy_mae", mode="min")
@@ -76,11 +75,12 @@ trainer_hparams = trainer_hparams.finalize()
 
 # Data
 data_hparams = jc.MPTrjAlexOMAT24DataModuleConfig.draft()
-data_hparams.batch_size = 48
+data_hparams.batch_size = 150
 data_hparams.num_workers = 8
 data_hparams.subsample_val = 5_000
 data_hparams.salex.local_path = Path("/storage/nima/salex-ocp/hf/")
 data_hparams.omat24.local_path = Path("/storage/nima/omat24/hf/")
+data_hparams.with_linear_reference_("mptrj-salex")
 data_hparams = data_hparams.finalize()
 
 runs = [(model_hparams, trainer_hparams, data_hparams)]
