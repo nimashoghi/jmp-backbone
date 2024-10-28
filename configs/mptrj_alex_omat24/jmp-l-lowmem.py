@@ -3,9 +3,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import jmp.configs as jc
 import nshconfig_extra as CE
 import nshtrainer as nt
+
+import jmp.configs as jc
 
 base_dir = Path("/gpfs/alpine2/proj-shared/mat273/nimashoghi/")
 cwd = base_dir / "experiment-data/"
@@ -120,6 +121,8 @@ for config, trainer_config, data_config in runs:
     trainer_config.hf_hub.save_config = False
     if trainer_config.logging.wandb is not None:
         trainer_config.logging.wandb.offline_()
+        trainer_config.logging.wandb.use_wandb_core = False
+        trainer_config.logging.wandb.log_code = None
 
     runs_summit.append((config, trainer_config, data_config))
 
