@@ -7,7 +7,6 @@ from pathlib import Path
 import jmp.configs as jc
 import nshconfig_extra as CE
 import nshrunner as nr
-import nshsnap
 import nshtrainer as nt
 
 cwd = Path("/net/csefiles/coc-fung-cluster/nima/shared/experiment-data/")
@@ -61,12 +60,12 @@ def run(
 
     def update_hparams(hparams: jc.Config):
         hparams = hparams.model_copy(deep=True)
-        hparams.energy_referencer = jc.PerAtomReferencerConfig.linear_reference(
-            "mptrj-salex"
-        )
+        # hparams.energy_referencer = jc.PerAtomReferencerConfig.linear_reference(
+        #     "mptrj-salex"
+        # )
 
         optimization = jc.OptimizationConfig.draft()
-        optimization.optimizer = nt.configs.AdamWConfig(lr=8.0e-5, weight_decay=0.001)
+        optimization.optimizer = nt.configs.AdamWConfig(lr=1.0e-4, weight_decay=0.001)
         optimization.separate_lr_multiplier = jc.SeparateLRMultiplierConfig(
             backbone_multiplier=0.25, rest_multiplier=1.0
         )

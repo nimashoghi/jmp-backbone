@@ -8,6 +8,7 @@ import nshconfig as C
 import nshutils.typecheck as tc
 import torch
 import torch.nn as nn
+from torch_scatter import scatter
 from typing_extensions import override
 
 log = logging.getLogger(__name__)
@@ -19,6 +20,8 @@ class ReferencerBaseModule(nn.Module, ABC):
         self,
         total_energy: tc.Float[torch.Tensor, "bsz"],
         atomic_numbers: tc.Int[torch.Tensor, "natoms"],
+        batch_idx: tc.Int[torch.Tensor, "bsz"],
+        batch_size: int,
     ) -> tc.Float[torch.Tensor, "bsz"]:
         pass
 
@@ -27,6 +30,8 @@ class ReferencerBaseModule(nn.Module, ABC):
         self,
         referenced_energy: tc.Float[torch.Tensor, "bsz"],
         atomic_numbers: tc.Int[torch.Tensor, "bsz natoms"],
+        batch_idx: tc.Int[torch.Tensor, "bsz"],
+        batch_size: int,
     ) -> tc.Float[torch.Tensor, "bsz"]:
         pass
 
@@ -50,6 +55,8 @@ class IdentityReferencer(ReferencerBaseModule):
         self,
         total_energy: tc.Float[torch.Tensor, "bsz"],
         atomic_numbers: tc.Int[torch.Tensor, "natoms"],
+        batch_idx: tc.Int[torch.Tensor, "bsz"],
+        batch_size: int,
     ) -> tc.Float[torch.Tensor, "bsz"]:
         return total_energy
 
@@ -57,6 +64,8 @@ class IdentityReferencer(ReferencerBaseModule):
         self,
         referenced_energy: tc.Float[torch.Tensor, "bsz"],
         atomic_numbers: tc.Int[torch.Tensor, "bsz natoms"],
+        batch_idx: tc.Int[torch.Tensor, "bsz"],
+        batch_size: int,
     ) -> tc.Float[torch.Tensor, "bsz"]:
         return referenced_energy
 
@@ -101,15 +110,31 @@ class PerAtomReferencer(ReferencerBaseModule):
         self,
         total_energy: tc.Float[torch.Tensor, "bsz"],
         atomic_numbers: tc.Int[torch.Tensor, "natoms"],
+        batch_idx: tc.Int[torch.Tensor, "bsz"],
+        batch_size: int,
     ) -> tc.Float[torch.Tensor, "bsz"]:
-        return total_energy - self.per_atom_references[atomic_numbers].sum()
+        return total_energy - scatter(
+            self.per_atom_references[atomic_numbers],
+            batch_idx,
+            dim=0,
+            reduce="sum",
+            dim_size=batch_size,
+        )
 
     def dereference(
         self,
         referenced_energy: tc.Float[torch.Tensor, "bsz"],
         atomic_numbers: tc.Int[torch.Tensor, "bsz natoms"],
+        batch_idx: tc.Int[torch.Tensor, "bsz"],
+        batch_size: int,
     ) -> tc.Float[torch.Tensor, "bsz"]:
-        return referenced_energy + self.per_atom_references[atomic_numbers].sum()
+        return referenced_energy + scatter(
+            self.per_atom_references[atomic_numbers],
+            batch_idx,
+            dim=0,
+            reduce="sum",
+            dim_size=batch_size,
+        )
 
 
 ReferencerConfig: TypeAlias = Annotated[

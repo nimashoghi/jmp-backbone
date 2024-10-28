@@ -22,11 +22,7 @@ from .models.gemnet.graph import GraphComputer, GraphComputerConfig
 from .nn.energy_head import EnergyTargetConfig
 from .nn.force_head import ForceTargetConfig
 from .nn.stress_head import StressTargetConfig
-from .referencing import (
-    IdentityReferencerConfig,
-    PerAtomReferencerConfig,
-    ReferencerConfig,
-)
+from .referencing import IdentityReferencerConfig, ReferencerConfig
 from .types import Predictions
 
 log = logging.getLogger(__name__)
@@ -207,6 +203,8 @@ class Module(nt.LightningModuleBase[Config]):
                 outputs["energy"] = self.energy_referencer.dereference(
                     outputs["energy"],
                     batch.atomic_numbers,
+                    batch.batch,
+                    batch.num_graphs,
                 )
             case "referenced":
                 # Nothing to do here, the energy referencing is already applied in the forward
@@ -273,7 +271,12 @@ class Module(nt.LightningModuleBase[Config]):
 
         # Apply energy referencing
         data.y_total = data.y.clone()
-        data.y = self.energy_referencer.reference(data.y_total, data.atomic_numbers)
+        data.y = self.energy_referencer.reference(
+            data.y_total,
+            data.atomic_numbers,
+            data.batch,
+            data.num_graphs,
+        )
 
         # Forward pass
         outputs = self(data)
