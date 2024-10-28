@@ -4,22 +4,21 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+import jmp.configs as jc
 import nshconfig_extra as CE
 import nshrunner as nr
 import nshsnap
 import nshtrainer as nt
 
-import jmp.configs as jc
-
 cwd = Path("/net/csefiles/coc-fung-cluster/nima/shared/experiment-data/")
 env = {
     "HF_HOME": "/net/csefiles/coc-fung-cluster/nima/shared/cache/huggingface",
-    "CUDA_VISIBLE_DEVICES": "3",
+    "CUDA_VISIBLE_DEVICES": "1,2,3",
 }
 os.environ.update(env)
 
 ckpt = CE.CachedPath(
-    uri="hf://nimashoghi/mptrj-alex-omat24-jmp-s-1our3wgd/checkpoints/last/epoch1-step172332.ckpt"
+    uri="hf://nimashoghi/mptrj-alex-omat24-jmp-s-1our3wgd/checkpoints/last/epoch2-step287220.ckpt"
 )
 trainer_hparams = nt.TrainerConfig.draft()
 
@@ -97,9 +96,5 @@ runner = nr.Runner(run, nr.RunnerConfig(working_dir=cwd))
 runner.local(runs_fast_dev_run, env=env)
 
 # %%
-runner = nr.Runner(
-    run, nr.RunnerConfig(working_dir=cwd, auto_snapshot_args_resolved_modules=False)
-)
-runner.session(runs, env=env, snapshot=nshsnap.SnapshotConfig(modules=["jmp"]))
-
-# %%
+runner = nr.Runner(run, nr.RunnerConfig(working_dir=cwd))
+runner.session(runs, env=env, snapshot=True)
