@@ -22,7 +22,7 @@ class ForceFieldMetrics(nn.Module):
         self.force_mae = torchmetrics.MeanAbsoluteError()
         self.force_mse = torchmetrics.MeanSquaredError(squared=True)
         self.force_rmse = torchmetrics.MeanSquaredError(squared=False)
-        self.force_cos = torchmetrics.CosineSimilarity(reduction="mean")
+        # self.force_cos = torchmetrics.CosineSimilarity(reduction="mean")
 
         # Stress metrics
         self.stress_mae = torchmetrics.MeanAbsoluteError()
@@ -51,7 +51,7 @@ class ForceFieldMetrics(nn.Module):
         self.force_mae(forces_hat, forces_true)
         self.force_mse(forces_hat, forces_true)
         self.force_rmse(forces_hat.float(), forces_true.float())
-        self.force_cos(forces_hat, forces_true)
+        # self.force_cos(forces_hat, forces_true)
 
         # Stress metrics
         self.stress_mae(stress_hat, stress_true)
@@ -65,7 +65,7 @@ class ForceFieldMetrics(nn.Module):
             "force_mae": self.force_mae,
             "force_mse": self.force_mse,
             "force_rmse": self.force_rmse,
-            "force_cos": self.force_cos,
+            # "force_cos": self.force_cos,
             "stress_mae": self.stress_mae,
             "stress_mse": self.stress_mse,
             "stress_rmse": self.stress_rmse,

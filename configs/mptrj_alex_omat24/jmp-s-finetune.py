@@ -17,7 +17,7 @@ env = {
 os.environ.update(env)
 
 ckpt = CE.CachedPath(
-    uri="hf://nimashoghi/mptrj-alex-omat24-jmp-s-1our3wgd/checkpoints/last/epoch2-step287220.ckpt"
+    uri="hf://nimashoghi/mptrj-alex-omat24-jmp-s-3mnzsq37/checkpoints/last/epoch0-step21541.ckpt"
 )
 trainer_hparams = nt.TrainerConfig.draft()
 
@@ -60,9 +60,12 @@ def run(
 
     def update_hparams(hparams: jc.Config):
         hparams = hparams.model_copy(deep=True)
-        # hparams.energy_referencer = jc.PerAtomReferencerConfig.linear_reference(
-        #     "mptrj-salex"
-        # )
+        hparams.energy_referencer = jc.PerAtomReferencerConfig.linear_reference(
+            "mptrj-salex"
+        )
+        hparams.targets.energy_loss_coefficient = 1.0
+        hparams.targets.force_loss_coefficient = 10.0
+        hparams.targets.stress_loss_coefficient = 100.0
 
         optimization = jc.OptimizationConfig.draft()
         optimization.optimizer = nt.configs.AdamWConfig(lr=1.0e-4, weight_decay=0.001)
@@ -96,4 +99,4 @@ runner.local(runs_fast_dev_run, env=env)
 
 # %%
 runner = nr.Runner(run, nr.RunnerConfig(working_dir=cwd))
-runner.session(runs, env=env, snapshot=True)
+runner.session(runs, env=env, snapshot={"modules": ["jmp"]})
