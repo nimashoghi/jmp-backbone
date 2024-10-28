@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from collections import Counter
+from collections.abc import Callable
 from pathlib import Path
 
 import ase
@@ -14,7 +15,7 @@ from torch_geometric.data import Batch
 from tqdm.auto import tqdm
 from typing_extensions import Self
 
-from ..lightning_module import Module
+from ..lightning_module import Config, Module
 from .calculator import JMPCalculator
 from .dataset_relaxer import DatasetItem, RelaxerConfig, relax_generator, write_result
 
@@ -168,15 +169,19 @@ def predict(data: Batch, lightning_module: Module):
     return predictions
 
 
-def relax_wbm_run_fn(config: RelaxWBMConfig, results_dir: Path):
+def relax_wbm_run_fn(
+    config: RelaxWBMConfig,
+    results_dir: Path,
+    update_hparams: Callable[[Config], Config] | None = None,
+):
     from pymatviz.enums import Key
 
     # Resolve the current device
     device = config._resolve_device()
 
     # Load the model from the checkpoint
-    lightning_module = Module.load_from_checkpoint(
-        config.ckpt_path.resolve(), map_location=device
+    lightning_module = Module.load_ckpt(
+        config.ckpt_path.resolve(), update_hparams=update_hparams
     )
     lightning_module = lightning_module.to(device)
 
