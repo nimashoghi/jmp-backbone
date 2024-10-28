@@ -12,7 +12,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
 from torch_geometric.data import Batch, Data
-from typing_extensions import assert_never, override
+from typing_extensions import override
 
 log = logging.getLogger(__name__)
 
@@ -52,23 +52,11 @@ class MPTrjAlexOMAT24DataModuleConfig(C.Config):
     pin_memory: bool = True
     """Whether to pin memory in the data loader."""
 
-    reference: list[float] | None = None
-    """Atomic energy reference values."""
-
     filter_small_systems: bool = True
     """Whether to filter out small systems (less than 4 atoms)."""
 
     subsample_val: int | None = None
     """If not `None`, subsample each validation dataset to this number of samples (if the dataset is larger)."""
-
-    def with_linear_reference_(self, reference: Literal["mptrj-salex"]):
-        match reference:
-            case "mptrj-salex":
-                from .linref import PRECOMPUTED_MPTRJ_ALEX
-
-                self.reference = PRECOMPUTED_MPTRJ_ALEX
-            case _:
-                assert_never(reference)
 
 
 def _load_dataset(
@@ -141,13 +129,6 @@ class MPTrjAlexOMAT24Dataset(Dataset, nt.data.balanced_batch_sampler.DatasetWith
             split=split,
             subsample=subsample,
         )
-
-        self.reference = None
-        if self.data_config.reference is not None:
-            self.reference = torch.tensor(self.data_config.reference, dtype=torch.float)
-            log.critical(f"Using reference: {self.reference}")
-        else:
-            log.critical("No reference provided. Using raw energies.")
 
     @staticmethod
     def ensure_downloaded(data_config: MPTrjAlexOMAT24DataModuleConfig):
@@ -244,10 +225,6 @@ class MPTrjAlexOMAT24Dataset(Dataset, nt.data.balanced_batch_sampler.DatasetWith
             data.tags = torch.full_like(data.atomic_numbers, 2, dtype=torch.long)
         if "fixed" not in data:
             data.fixed = torch.zeros_like(data.atomic_numbers, dtype=torch.bool)
-
-        # Apply reference
-        if self.reference is not None:
-            data.y = data.y - self.reference[data.atomic_numbers].sum()
 
         return data
 

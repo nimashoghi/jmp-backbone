@@ -4,11 +4,12 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-import jmp.configs as jc
 import nshconfig_extra as CE
 import nshrunner as nr
 import nshsnap
 import nshtrainer as nt
+
+import jmp.configs as jc
 
 cwd = Path("/net/csefiles/coc-fung-cluster/nima/shared/experiment-data/")
 env = {
@@ -43,7 +44,6 @@ data_hparams = jc.MPTrjAlexOMAT24DataModuleConfig.draft()
 data_hparams.batch_size = 200
 data_hparams.num_workers = 8
 data_hparams.omat24.enabled = False
-data_hparams.with_linear_reference_("mptrj-salex")
 data_hparams.subsample_val = 5_000
 data_hparams = data_hparams.finalize()
 

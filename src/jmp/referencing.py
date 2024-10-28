@@ -95,6 +95,7 @@ class PerAtomReferencer(ReferencerBaseModule):
         self.register_buffer(
             "per_atom_references", per_atom_references, persistent=False
         )
+        log.info(f"Per-atom references: {self.per_atom_references}")
 
     def reference(
         self,

@@ -3,9 +3,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import jmp.configs as jc
 import nshconfig_extra as CE
 import nshtrainer as nt
+
+import jmp.configs as jc
 
 cwd = Path("/net/csefiles/coc-fung-cluster/nima/shared/experiment-data/")
 ckpt_path = Path("/net/csefiles/coc-fung-cluster/nima/shared/checkpoints/jmp-l.pt")
@@ -80,7 +81,6 @@ data_hparams.num_workers = 8
 data_hparams.subsample_val = 5_000
 data_hparams.salex.local_path = Path("/storage/nima/salex-ocp/hf/")
 data_hparams.omat24.local_path = Path("/storage/nima/omat24/hf/")
-data_hparams.with_linear_reference_("mptrj-salex")
 data_hparams = data_hparams.finalize()
 
 runs = [(model_hparams, trainer_hparams, data_hparams)]

@@ -3,10 +3,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import jmp.configs as jc
 import nshconfig_extra as CE
 import nshtrainer as nt
 import nshutils as nu
+
+import jmp.configs as jc
 
 cwd = Path("/net/csefiles/coc-fung-cluster/nima/shared/experiment-data/")
 env = {
@@ -72,7 +73,6 @@ data_config.batch_size = 120
 data_config.num_workers = 8
 data_config.salex.local_path = Path("/storage/nima/salex-ocp/hf/")
 data_config.omat24.local_path = Path("/storage/nima/omat24/hf/")
-data_config.with_linear_reference_("mptrj-salex")
 data_config.subsample_val = 5_000
 data_config = data_config.finalize()
 nu.display(data_config)
