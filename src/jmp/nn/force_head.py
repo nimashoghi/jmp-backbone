@@ -24,7 +24,7 @@ class ForceTargetConfig(C.Config):
     computed from each node's scalar prediction.
     """
 
-    num_mlps: int = 5
+    num_mlps: int = 2
     """Number of MLPs in the output layer."""
 
     def create_model(
