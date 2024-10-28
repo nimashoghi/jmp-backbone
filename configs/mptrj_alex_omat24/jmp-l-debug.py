@@ -3,10 +3,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import jmp.configs as jc
 import nshconfig_extra as CE
 import nshtrainer as nt
-
-import jmp.configs as jc
 
 base_dir = Path("/gpfs/alpine2/proj-shared/mat273/nimashoghi/")
 cwd = base_dir / "experiment-data/"
@@ -15,6 +14,7 @@ env = {
     "HF_HOME": "/gpfs/alpine2/proj-shared/mat273/nimashoghi/hf",
     "HF_DATASETS_CACHE": "/gpfs/alpine2/proj-shared/mat273/nimashoghi/hf-datasets-cache",
     "HF_DATASETS_OFFLINE": "1",
+    "WANDB__REQUIRE_LEGACY_SERVICE": "TRUE",
 }
 
 model_hparams = jc.Config.draft()
