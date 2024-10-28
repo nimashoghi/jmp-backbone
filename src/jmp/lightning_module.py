@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import logging
-from typing import Literal, cast
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any, Literal, cast
 
 import nshconfig as C
 import nshconfig_extra as CE
@@ -66,7 +68,7 @@ class OptimizationConfig(C.Config):
 
 
 class Config(C.Config):
-    pretrained_ckpt: CE.CachedPath
+    pretrained_ckpt: CE.CachedPath | None
     """Path to the pretrained checkpoint."""
 
     graph_computer: GraphComputerConfig
@@ -83,15 +85,6 @@ class Config(C.Config):
 
     energy_referencer: ReferencerConfig = IdentityReferencerConfig()
     """Energy referencing configuration."""
-
-    def __post_init__(self):
-        super().__post_init__()
-
-        if True:
-            self.energy_referencer = PerAtomReferencerConfig.linear_reference(
-                "mptrj-salex"
-            )
-            self.pretrained_ckpt = CE.CachedPath(uri="/mnt/shared/checkpoints/jmp-s.pt")
 
 
 class Module(nt.LightningModuleBase[Config]):
@@ -350,3 +343,24 @@ class Module(nt.LightningModuleBase[Config]):
             )
 
         return output
+
+    @classmethod
+    def load_ckpt(
+        cls,
+        path: Path,
+        update_hparams: Callable[[Config], Config] | None = None,
+        update_hparams_dict: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+    ):
+        ckpt = torch.load(path, map_location="cpu")
+
+        hparams_dict = ckpt[cls.CHECKPOINT_HYPER_PARAMS_KEY]
+        if update_hparams_dict is not None:
+            hparams_dict = update_hparams_dict(hparams_dict)
+
+        hparams = cls.hparams_cls().model_validate(hparams_dict)
+        if update_hparams is not None:
+            hparams = update_hparams(hparams)
+
+        model = cls(hparams)
+        model.load_state_dict(ckpt["state_dict"])
+        return model
