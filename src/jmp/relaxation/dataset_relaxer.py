@@ -8,7 +8,7 @@ from typing import Any, Literal
 import dill
 import nshconfig as C
 from ase import Atoms
-from ase.filters import FrechetCellFilter, UnitCellFilter
+from ase.filters import ExpCellFilter, FrechetCellFilter, UnitCellFilter
 from ase.optimize import BFGS, FIRE, LBFGS
 from pymatgen.core import Structure
 from pymatgen.io.ase import AseAtomsAdaptor
@@ -16,7 +16,11 @@ from typing_extensions import NotRequired, TypedDict
 
 from .calculator import JMPCalculator
 
-FILTER_CLS = {"frechet": FrechetCellFilter, "unit": UnitCellFilter}
+FILTER_CLS = {
+    "frechet": FrechetCellFilter,
+    "unit": UnitCellFilter,
+    "exp": ExpCellFilter,
+}
 OPTIM_CLS = {"FIRE": FIRE, "LBFGS": LBFGS, "BFGS": BFGS}
 
 
@@ -33,7 +37,7 @@ class RelaxerConfig(C.Config):
     max_steps: int
     """Maximum number of relaxation steps."""
 
-    cell_filter: Literal["frechet", "unit"] | None = None
+    cell_filter: Literal["frechet", "exp", "unit"] | None = None
     """Cell filter to use for relaxation."""
 
     optim_log_file: Path = Path("/dev/null")

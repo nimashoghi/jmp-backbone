@@ -155,7 +155,7 @@ def predict(data: Batch, lightning_module: Module):
     # Run the prediction, converting stress to ev/A^3 and using the total energy
     predictions = lightning_module.predict(
         data,
-        convert_stress_to_ev_a3=True,
+        convert_stress_to_ev_a3=False,
         energy_kind="total",
     )
 
@@ -166,6 +166,7 @@ def predict(data: Batch, lightning_module: Module):
     predictions["energy"] = get_e_form_per_atom(
         {"composition": _composition(data), "energy": predictions["energy"]}
     )
+    predictions["stress"] = predictions["stress"][0]
     return predictions
 
 
