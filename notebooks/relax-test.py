@@ -9,7 +9,7 @@ import nshutils as nu
 import jmp.configs as jc
 
 ckpt_path = CE.CachedPath(
-    uri="hf://nimashoghi/mptrj-alex-omat24-jmp-s-mptrj-salex-finetune-n727oywf/checkpoints/last/epoch2-step57398.ckpt"
+    uri="hf://nimashoghi/mptrj-alex-omat24-jmp-s-mptrj-salex-finetune-n727oywf/checkpoints/last/epoch7-step143497.ckpt"
 )
 
 config = jc.RelaxWBMConfig.draft()
