@@ -2,61 +2,15 @@ from __future__ import annotations
 
 __codegen__ = True
 
-from typing import TYPE_CHECKING
-
-# Config/alias imports
-
-if TYPE_CHECKING:
-    from jmp.lightning_module import Config as Config
-    from jmp.lightning_module import EnergyTargetConfig as EnergyTargetConfig
-    from jmp.lightning_module import ForceTargetConfig as ForceTargetConfig
-    from jmp.lightning_module import GraphComputerConfig as GraphComputerConfig
-    from jmp.lightning_module import (
-        IdentityReferencerConfig as IdentityReferencerConfig,
-    )
-    from jmp.lightning_module import OptimizationConfig as OptimizationConfig
-    from jmp.lightning_module import PerAtomReferencerConfig as PerAtomReferencerConfig
-    from jmp.lightning_module import ReferencerConfig as ReferencerConfig
-    from jmp.lightning_module import (
-        SeparateLRMultiplierConfig as SeparateLRMultiplierConfig,
-    )
-    from jmp.lightning_module import StressTargetConfig as StressTargetConfig
-    from jmp.lightning_module import TargetsConfig as TargetsConfig
-else:
-
-    def __getattr__(name):
-        import importlib
-
-        if name in globals():
-            return globals()[name]
-        if name == "Config":
-            return importlib.import_module("jmp.lightning_module").Config
-        if name == "EnergyTargetConfig":
-            return importlib.import_module("jmp.lightning_module").EnergyTargetConfig
-        if name == "ForceTargetConfig":
-            return importlib.import_module("jmp.lightning_module").ForceTargetConfig
-        if name == "GraphComputerConfig":
-            return importlib.import_module("jmp.lightning_module").GraphComputerConfig
-        if name == "IdentityReferencerConfig":
-            return importlib.import_module(
-                "jmp.lightning_module"
-            ).IdentityReferencerConfig
-        if name == "OptimizationConfig":
-            return importlib.import_module("jmp.lightning_module").OptimizationConfig
-        if name == "PerAtomReferencerConfig":
-            return importlib.import_module(
-                "jmp.lightning_module"
-            ).PerAtomReferencerConfig
-        if name == "SeparateLRMultiplierConfig":
-            return importlib.import_module(
-                "jmp.lightning_module"
-            ).SeparateLRMultiplierConfig
-        if name == "StressTargetConfig":
-            return importlib.import_module("jmp.lightning_module").StressTargetConfig
-        if name == "TargetsConfig":
-            return importlib.import_module("jmp.lightning_module").TargetsConfig
-        if name == "ReferencerConfig":
-            return importlib.import_module("jmp.lightning_module").ReferencerConfig
-        raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
-
-# Submodule exports
+from jmp.lightning_module import Config as Config
+from jmp.lightning_module import EnergyTargetConfig as EnergyTargetConfig
+from jmp.lightning_module import ForceTargetConfig as ForceTargetConfig
+from jmp.lightning_module import GraphComputerConfig as GraphComputerConfig
+from jmp.lightning_module import IdentityReferencerConfig as IdentityReferencerConfig
+from jmp.lightning_module import OptimizationConfig as OptimizationConfig
+from jmp.lightning_module import ReferencerConfig as ReferencerConfig
+from jmp.lightning_module import (
+    SeparateLRMultiplierConfig as SeparateLRMultiplierConfig,
+)
+from jmp.lightning_module import StressTargetConfig as StressTargetConfig
+from jmp.lightning_module import TargetsConfig as TargetsConfig
