@@ -294,28 +294,82 @@ dataset_fns = {
     "transition1x": transition1x_dataset,
 }
 
-embeddings, energies = create_embeddings(
-    dataset_fns,
-    num_embeddings=10_000,
+# embeddings, energies = create_embeddings(
+#     dataset_fns,
+#     num_embeddings=10_000,
+# )
+
+# %%
+import logging
+import pickle
+from pathlib import Path
+from typing import Callable
+
+import numpy as np
+import torch
+from torch_geometric.data import Batch
+from tqdm import tqdm
+
+
+@torch.no_grad()
+@torch.inference_mode()
+def create_and_save_embeddings(
+    dataset_fns: dict[str, Callable[[], Callable[[], Batch]]],
+    save_path: Path,
+    num_embeddings: int = 10_000,
+    device: str = "cuda",
+):
+    """
+    Creates and saves embeddings one dataset at a time.
+
+    Args:
+        dataset_fns: Dictionary of dataset name to dataset generator functions
+        save_path: Path to save the averaged embeddings
+        num_embeddings: Number of embeddings to generate per dataset
+        device: Device to use for computation
+    """
+    avg_embeddings = {}
+
+    for dataset_name, dataset_fn in dataset_fns.items():
+        print(f"Processing dataset: {dataset_name}")
+        new_batch = dataset_fn()
+        dataset_embeddings = []
+
+        for _ in tqdm(range(num_embeddings)):
+            try:
+                batch = new_batch()
+                batch = batch.to(device)
+                embedding = module.embeddings(batch)
+
+                # Average the node embeddings for this graph
+                avg_embedding = embedding["energy"].mean(dim=0).cpu().numpy()
+                dataset_embeddings.append(avg_embedding)
+
+            except Exception as e:
+                logging.error(f"Error processing {dataset_name}", exc_info=e)
+                continue
+
+        avg_embeddings[dataset_name] = np.stack(dataset_embeddings, axis=0)
+
+        # Save progress after each dataset
+        with open(save_path, "wb") as f:
+            pickle.dump(avg_embeddings, f)
+
+        print(
+            f"Saved {dataset_name} embeddings. Shape: {avg_embeddings[dataset_name].shape}"
+        )
+
+    return avg_embeddings
+
+
+# Usage example:
+save_path = Path("/mnt/datasets/jmpwbm_all_avg_embeddings.pkl")
+avg_embeddings = create_and_save_embeddings(
+    dataset_fns, save_path=save_path, num_embeddings=10_000
 )
 
 # %%
 import numpy as np
-
-avg_embeddings = {
-    dataset_name: np.stack(
-        [
-            model_output["energy"].mean(dim=0).float().numpy()
-            for model_output in model_outputs
-        ],
-        axis=0,
-    )
-    for dataset_name, model_outputs in embeddings.items()
-}
-import pickle
-
-with open("/mnt/datasets/jmpwbm_all_avg_embeddings.pkl", "wb") as f:
-    pickle.dump(avg_embeddings, f)
 
 rich.print(avg_embeddings)
 
@@ -331,7 +385,7 @@ all_labels = np.concatenate(
     ],
     axis=0,
 )
-tsne = TSNE(n_components=2, random_state=0)
+tsne = TSNE(n_components=2, random_state=42)
 tsne_embeddings = tsne.fit_transform(all_embeddings)
 print(tsne_embeddings.shape)
 
@@ -341,17 +395,54 @@ import seaborn as sns
 
 sns.set_theme(style="white")
 
+# Create mapping of dataset names to pretty labels
+dataset_labels = {
+    "mptrj": "MPTrj",
+    "wbm": "WBM",
+    "oc20": "OC20",
+    "oc22": "OC22",
+    "ani1x": "ANI1x",
+    "transition1x": "Transition1x",
+}
+
 # Plot t-SNE embeddings
-fig, ax = plt.subplots(figsize=(10, 10))
+fig, ax = plt.subplots(figsize=(8, 6))
 
 for i, dataset_name in enumerate(avg_embeddings.keys()):
     mask = all_labels == i
     sns.scatterplot(
         x=tsne_embeddings[mask, 0],
         y=tsne_embeddings[mask, 1],
-        label=dataset_name,
+        label=dataset_labels[dataset_name],
+        alpha=0.8,
+        s=40,
         ax=ax,
     )
 
-ax.legend()
+# ax.set_title("t-SNE Visualization of Dataset Embeddings", fontsize=16, pad=20)
+# ax.set_xlabel("t-SNE Component 1", fontsize=12)
+# ax.set_ylabel("t-SNE Component 2", fontsize=12)
+
+# Improve legend
+ax.legend(
+    # fontsize=12,
+    # title="Dataset",
+    # title_fontsize=14,
+    bbox_to_anchor=(1.05, 1),
+    loc="upper right",
+    # Remove  the border of the legend
+    # frameon=False,
+)
+
+# Remove spines
+for spine in ax.spines.values():
+    spine.set_visible(False)
+
+# Remove the x/y ticks
+ax.set_xticks([])
+ax.set_yticks([])
+
+
+plt.tight_layout()
+plt.savefig("tsne-all.pdf", bbox_inches="tight")
 plt.show()
