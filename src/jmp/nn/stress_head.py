@@ -97,7 +97,8 @@ class _Rank2DecompositionEdgeBlock(nn.Module):
         idx_t: tc.Int[torch.Tensor, "num_edges"],
         batch_idx: tc.Int[torch.Tensor, "num_nodes"],
         batch_size: int,
-    ) -> tc.Float[torch.Tensor, "bsz 3 3"]:
+        return_decomposed: bool = True,
+    ):
         """evaluate
         Parameters
         ----------
@@ -143,7 +144,6 @@ class _Rank2DecompositionEdgeBlock(nn.Module):
                 reduce="mean",
             )
         else:
-            raise NotImplementedError
             edge_irrep2 = (
                 sphere_irrep2[:, :, None] * x_edge[:, None, :]
             )  # (nAtoms, 5, emb_size)
@@ -196,9 +196,15 @@ class _Rank2DecompositionEdgeBlock(nn.Module):
                 reduce="mean",
             )
 
+        if return_decomposed:
+            return scalar, irrep2
+
+        return self.combine_scalar_irrep2(scalar, irrep2)
+
+    def combine_scalar_irrep2(self, scalar, irrep2):
         # Change of basis to compute a rank 2 symmetric tensor
 
-        vector = torch.zeros((batch_size, 3), device=scalar.device).detach()
+        vector = torch.zeros((scalar.shape[0], 3), device=scalar.device).detach()
         flatten_irreps = torch.cat([scalar.reshape(-1, 1), vector, irrep2], dim=1)
         stress = torch.einsum(
             "ab, cb->ca", self.change_mat.to(flatten_irreps.device), flatten_irreps
@@ -225,6 +231,9 @@ class StressTargetConfig(C.Config):
 
     num_layers: int = 1
     """The number of layers in the output head"""
+
+    edge_level: bool = True
+    """Whether to predict at the edge level"""
 
     @property
     def extensive(self):
@@ -268,7 +277,7 @@ class StressOutputHead(nn.Module):
 
         self.block = _Rank2DecompositionEdgeBlock(
             d_model_edge,
-            edge_level=True,
+            edge_level=self.hparams.edge_level,
             extensive=self.hparams.extensive,
             num_layers=self.hparams.num_layers,
             activation_cls=activation_cls,
@@ -276,7 +285,9 @@ class StressOutputHead(nn.Module):
 
     @override
     def forward(
-        self, input: StressOutputHeadInput
+        self,
+        input: StressOutputHeadInput,
+        return_decomposed: bool = True,
     ) -> tc.Float[torch.Tensor, "bsz 3 3"]:
         return self.block(
             input["backbone_output"]["forces"],
@@ -284,4 +295,8 @@ class StressOutputHead(nn.Module):
             input["backbone_output"]["idx_t"],
             input["data"].batch,
             input["data"].cell.shape[0],
+            return_decomposed=return_decomposed,
         )
+
+    def combine_scalar_irrep2(self, scalar, irrep2):
+        return self.block.combine_scalar_irrep2(scalar, irrep2)

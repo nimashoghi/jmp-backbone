@@ -7,6 +7,7 @@ from jmp.lightning_datamodule import (
     MPTrjAlexOMAT24DataModuleConfig as MPTrjAlexOMAT24DataModuleConfig,
 )
 from jmp.lightning_module import GraphComputerConfig as GraphComputerConfig
+from jmp.lightning_module import NormalizationConfig as NormalizationConfig
 from jmp.lightning_module import OptimizationConfig as OptimizationConfig
 from jmp.lightning_module import (
     SeparateLRMultiplierConfig as SeparateLRMultiplierConfig,

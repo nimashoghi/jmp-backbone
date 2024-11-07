@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, Literal, TypedDict, cast
 
 import nshconfig as C
 import nshconfig_extra as CE
@@ -16,6 +16,7 @@ from lightning.pytorch.utilities.types import OptimizerLRSchedulerConfig
 from torch_geometric.data import Batch
 from typing_extensions import assert_never, override
 
+from .loss import l2mae_loss
 from .metrics import ForceFieldMetrics
 from .models.gemnet.backbone import GemNetOCBackbone, GOCBackboneOutput
 from .models.gemnet.graph import GraphComputer, GraphComputerConfig
@@ -26,6 +27,13 @@ from .referencing import IdentityReferencerConfig, ReferencerConfig
 from .types import Predictions
 
 log = logging.getLogger(__name__)
+
+
+class ModelOutput(TypedDict):
+    energy: torch.Tensor
+    forces: torch.Tensor
+    stress_isotropic: torch.Tensor
+    stress_anisotropic: torch.Tensor
 
 
 class TargetsConfig(C.Config):
@@ -40,8 +48,24 @@ class TargetsConfig(C.Config):
     """Coefficient for the energy loss."""
     force_loss_coefficient: float
     """Coefficient for the force loss."""
-    stress_loss_coefficient: float
-    """Coefficient for the stress loss."""
+    stress_loss_coefficient: float | tuple[float, float]
+    """Coefficient for the stress loss (isotropic, anisotropic)."""
+
+    @property
+    def _isotropic_stress_loss_coefficient(self):
+        return (
+            self.stress_loss_coefficient
+            if not isinstance(self.stress_loss_coefficient, tuple)
+            else self.stress_loss_coefficient[0]
+        )
+
+    @property
+    def _anisotropic_stress_loss_coefficient(self):
+        return (
+            self.stress_loss_coefficient
+            if not isinstance(self.stress_loss_coefficient, tuple)
+            else self.stress_loss_coefficient[1]
+        )
 
 
 class SeparateLRMultiplierConfig(C.Config):
@@ -63,6 +87,22 @@ class OptimizationConfig(C.Config):
     """Separate learning rate multipliers for the backbone and heads."""
 
 
+class NormalizationConfig(C.Config):
+    mean: float
+    """Mean value for normalization."""
+
+    rmsd: float
+    """Root mean square deviation for normalization."""
+
+    @torch.autocast(device_type="cuda", enabled=False)
+    def norm(self, tensor: torch.Tensor) -> torch.Tensor:
+        return (tensor - self.mean) / self.rmsd
+
+    @torch.autocast(device_type="cuda", enabled=False)
+    def denorm(self, normed_tensor: torch.Tensor) -> torch.Tensor:
+        return normed_tensor * self.rmsd + self.mean
+
+
 class Config(C.Config):
     pretrained_ckpt: CE.CachedPath | None
     """Path to the pretrained checkpoint."""
@@ -81,6 +121,9 @@ class Config(C.Config):
 
     energy_referencer: ReferencerConfig = IdentityReferencerConfig()
     """Energy referencing configuration."""
+
+    normalization: dict[str, NormalizationConfig] = {}
+    """Normalization configuration for the input data."""
 
 
 class Module(nt.LightningModuleBase[Config]):
@@ -147,11 +190,16 @@ class Module(nt.LightningModuleBase[Config]):
         backbone_output = self.backbone(data)
 
         output_head_input = {"backbone_output": backbone_output, "data": data}
-        outputs: Predictions = {
-            "energy": self.energy_head(output_head_input),
-            "forces": self.force_head(output_head_input),
-            "stress": self.stress_head(output_head_input),
+        energy = self.energy_head(output_head_input)
+        forces = self.force_head(output_head_input)
+        stress_isotropic, stress_anisotropic = self.stress_head(output_head_input)
+        outputs: ModelOutput = {
+            "energy": energy,
+            "forces": forces,
+            "stress_isotropic": stress_isotropic,
+            "stress_anisotropic": stress_anisotropic,
         }
+
         return outputs
 
     def embeddings(self, batch: Batch):
@@ -164,11 +212,76 @@ class Module(nt.LightningModuleBase[Config]):
         embeddings: GOCBackboneOutput = self.backbone(batch)
         return embeddings
 
+    def _norm_targets(self, targets: ModelOutput) -> ModelOutput:
+        return cast(
+            ModelOutput,
+            {
+                key: norm.norm(value)
+                if (norm := self.hparams.normalization.get(key))
+                else value
+                for key, value in targets.items()
+            },
+        )
+
+    def _denorm_model_output(self, outputs: ModelOutput) -> ModelOutput:
+        return cast(
+            ModelOutput,
+            {
+                key: norm.denorm(value)
+                if (norm := self.hparams.normalization.get(key))
+                else value
+                for key, value in outputs.items()
+            },
+        )
+
+    def _undo_linref(
+        self,
+        outputs: ModelOutput,
+        data: Batch,
+        energy_kind: Literal["total", "referenced"] = "total",
+    ):
+        match energy_kind:
+            case "total":
+                outputs["energy"] = self.energy_referencer.dereference(
+                    outputs["energy"],
+                    data.atomic_numbers,
+                    data.batch,
+                    data.num_graphs,
+                )
+            case "referenced":
+                # Nothing to do here, the energy referencing is already applied in the forward
+                pass
+            case _:
+                assert_never(energy_kind)
+        return outputs
+
+    def _model_output_to_predictions(
+        self,
+        outputs: ModelOutput,
+        batch: Batch,
+        energy_kind: Literal["total", "referenced"] = "total",
+    ) -> Predictions:
+        # Denormalize the outputs
+        outputs = self._denorm_model_output(outputs)
+
+        # Energy referencing
+        outputs = self._undo_linref(outputs, batch, energy_kind)
+
+        # Compute stress from the isotropic and anisotropic components
+        stress = self.stress_head.combine_scalar_irrep2(
+            outputs["stress_isotropic"], outputs["stress_anisotropic"]
+        )
+
+        return {
+            "energy": outputs["energy"],
+            "forces": outputs["forces"],
+            "stress": stress,
+        }
+
     def predict(
         self,
         batch: Batch,
         *,
-        convert_stress_to_ev_a3: bool = False,
         energy_kind: Literal["total", "referenced"] = "total",
     ) -> Predictions:
         """
@@ -176,7 +289,6 @@ class Module(nt.LightningModuleBase[Config]):
 
         Args:
             batch (Batch): Input batch.
-            convert_stress_to_ev_a3 (bool): Whether to convert the stress from KBar to eV/A^3.
             energy_kind (Literal["total", "referenced"]): Kind of energy to return.
                 - "total": Total energy.
                 - "referenced": Referenced energy.
@@ -191,63 +303,107 @@ class Module(nt.LightningModuleBase[Config]):
         batch = self.graph_computer(batch)
 
         # Perform the forward pass
-        outputs: Predictions = self(batch)
+        outputs: ModelOutput = self(batch)
 
-        # Unit conversions: stress (KBar -> eV/A^3)
-        if convert_stress_to_ev_a3:
-            outputs["stress"] *= 1 / 160.21766208
+        # ModelOutput -> Predictions
+        predictions = self._model_output_to_predictions(outputs, batch, energy_kind)
 
-        # Energy referencing
-        match energy_kind:
-            case "total":
-                outputs["energy"] = self.energy_referencer.dereference(
-                    outputs["energy"],
-                    batch.atomic_numbers,
-                    batch.batch,
-                    batch.num_graphs,
-                )
-            case "referenced":
-                # Nothing to do here, the energy referencing is already applied in the forward
-                pass
-            case _:
-                assert_never(energy_kind)
+        return predictions
 
-        return outputs
+    def energy_loss(
+        self,
+        prediction: torch.Tensor,
+        target: torch.Tensor,
+        natoms: torch.Tensor,
+    ):
+        if True or (world_size := self.trainer.world_size) == 1:
+            return F.l1_loss(prediction / natoms, target / natoms, reduction="mean")
 
-    def _compute_loss(self, prediction: Predictions, data: Batch):
-        energy_hat, forces_hat, stress_hat = (
-            prediction["energy"],
-            prediction["forces"],
-            prediction["stress"],
+        # Multiply by world size since gradients are averaged across DDP replicas
+        loss = F.l1_loss(prediction / natoms, target / natoms, reduction="sum")
+        num_samples = torch.tensor(
+            target.shape[0], dtype=loss.dtype, device=loss.device
         )
-        energy_true, forces_true, stress_true = (
-            data.y,
-            data.force,
-            data.stress,
+        num_samples = self.trainer.strategy.reduce(num_samples, reduce_op="sum")
+        loss = (loss * world_size) / num_samples
+        return loss
+
+    def forces_loss(self, prediction: torch.Tensor, target: torch.Tensor):
+        if True or (world_size := self.trainer.world_size) == 1:
+            return l2mae_loss(prediction, target, reduction="mean")
+
+        # Multiply by world size since gradients are averaged across DDP replicas
+        loss = l2mae_loss(prediction, target, reduction="sum")
+        num_samples = torch.tensor(
+            target.shape[0], dtype=loss.dtype, device=loss.device
         )
+        num_samples = self.trainer.strategy.reduce(num_samples, reduce_op="sum")
+        loss = (loss * world_size) / num_samples
+        return loss
+
+    def isotropic_stress_loss(self, prediction: torch.Tensor, target: torch.Tensor):
+        if True or (world_size := self.trainer.world_size) == 1:
+            return F.l1_loss(prediction, target, reduction="mean")
+
+        # Multiply by world size since gradients are averaged across DDP replicas
+        loss = F.l1_loss(prediction, target, reduction="sum")
+        num_samples = torch.tensor(
+            target.shape[0], dtype=loss.dtype, device=loss.device
+        )
+        num_samples = self.trainer.strategy.reduce(num_samples, reduce_op="sum")
+        loss = (loss * world_size) / num_samples
+        return loss
+
+    def anisotropic_stress_loss(self, prediction: torch.Tensor, target: torch.Tensor):
+        return F.l1_loss(prediction, target, reduction="mean")
+
+    def _compute_loss(self, model_output: ModelOutput, data: Batch):
+        # Create a targets dict with a similar structure to the model output
+        targets: ModelOutput = {
+            "energy": data.y,
+            "forces": data.force,
+            "stress_isotropic": data.stress_isotropic.squeeze(dim=-1),
+            "stress_anisotropic": data.stress_anisotropic,
+        }
+        # Normalize targets
+        targets = self._norm_targets(targets)
 
         losses: list[torch.Tensor] = []
 
         # Energy loss
-        energy_loss = (
-            F.l1_loss(energy_hat, energy_true)
-            * self.hparams.targets.energy_loss_coefficient
+        energy_loss = self.energy_loss(
+            model_output["energy"],
+            targets["energy"],
+            data.natoms,
         )
-        losses.append(energy_loss)
+        self.log("energy_loss", energy_loss)
+        losses.append(energy_loss * self.hparams.targets.energy_loss_coefficient)
 
         # Force loss
-        force_loss = (
-            F.l1_loss(forces_hat, forces_true)
-            * self.hparams.targets.force_loss_coefficient
-        )
+        force_loss = self.forces_loss(model_output["forces"], targets["forces"])
+        self.log("force_loss", force_loss)
+        losses.append(force_loss * self.hparams.targets.force_loss_coefficient)
         losses.append(force_loss)
 
-        # Stress loss
-        stress_loss = (
-            F.l1_loss(stress_hat, stress_true)
-            * self.hparams.targets.stress_loss_coefficient
+        # Isotropic stress loss
+        isotropic_stress_loss = self.isotropic_stress_loss(
+            model_output["stress_isotropic"], targets["stress_isotropic"]
         )
-        losses.append(stress_loss)
+        self.log("isotropic_stress_loss", isotropic_stress_loss)
+        losses.append(
+            isotropic_stress_loss
+            * self.hparams.targets._isotropic_stress_loss_coefficient
+        )
+
+        # Anisotropic stress loss
+        anisotropic_stress_loss = self.anisotropic_stress_loss(
+            model_output["stress_anisotropic"], targets["stress_anisotropic"]
+        )
+        self.log("anisotropic_stress_loss", anisotropic_stress_loss)
+        losses.append(
+            anisotropic_stress_loss
+            * self.hparams.targets._anisotropic_stress_loss_coefficient
+        )
 
         # Total loss
         loss = cast(torch.Tensor, sum(losses))
@@ -279,18 +435,20 @@ class Module(nt.LightningModuleBase[Config]):
         )
 
         # Forward pass
-        outputs = self(data)
-        outputs = cast(Predictions, outputs)
+        outputs: ModelOutput = self(data)
 
         # Compute loss
         loss = self._compute_loss(outputs, data)
         self.log("loss", loss)
 
-        # Compute metrics
-        self.log_dict(metrics(outputs, data))
-
         # Undo energy referencing
         data.y = data.pop("y_total")
+
+        # ModelOutput -> Predictions for metrics
+        predictions = self._model_output_to_predictions(outputs, data, "total")
+
+        # Compute metrics
+        self.log_dict(metrics(predictions, data))
 
         return loss
 
