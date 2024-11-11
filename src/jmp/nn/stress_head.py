@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 from typing import Literal
 
 import nshconfig as C
@@ -13,6 +14,8 @@ from torch_scatter import scatter
 from typing_extensions import TypedDict, assert_never, override
 
 from ..models.gemnet.backbone import GOCBackboneOutput
+from .base import OutputHeadBase, OutputHeadInput, TargetConfigBase
+from .utils.tensor_grad import enable_grad
 
 
 class _Rank2DecompositionEdgeBlock(nn.Module):
@@ -215,7 +218,7 @@ class _Rank2DecompositionEdgeBlock(nn.Module):
         return stress
 
 
-class StressTargetConfig(C.Config):
+class StressTargetConfig(TargetConfigBase):
     reduction: Literal["sum", "mean"] = "sum"
     """
     The reduction method for the target. This refers to how the target is computed.
@@ -248,12 +251,7 @@ class StressTargetConfig(C.Config):
         )
 
 
-class StressOutputHeadInput(TypedDict):
-    data: BaseData
-    backbone_output: GOCBackboneOutput
-
-
-class StressOutputHead(nn.Module):
+class StressOutputHead(OutputHeadBase):
     @override
     def __init__(
         self,
@@ -275,9 +273,7 @@ class StressOutputHead(nn.Module):
         )
 
     @override
-    def forward(
-        self, input: StressOutputHeadInput
-    ) -> tc.Float[torch.Tensor, "bsz 3 3"]:
+    def forward(self, input: OutputHeadInput) -> tc.Float[torch.Tensor, "bsz 3 3"]:
         return self.block(
             input["backbone_output"]["forces"],
             input["backbone_output"]["V_st"],
@@ -285,3 +281,84 @@ class StressOutputHead(nn.Module):
             input["data"].batch,
             input["data"].cell.shape[0],
         )
+
+    @override
+    @contextlib.contextmanager
+    def forward_context(self, data: BaseData):
+        yield
+
+
+class ConservativeStressTargetConfig(TargetConfigBase):
+    energy_prop_name: str = "energy"
+    """The name of the energy property."""
+
+    def create_model(
+        self,
+    ):
+        return ConservativeStressOutputHead(
+            hparams=self,
+        )
+
+
+class ConservativeStressOutputHead(OutputHeadBase):
+    @override
+    def __init__(
+        self,
+        hparams: ConservativeStressTargetConfig,
+    ):
+        super().__init__()
+        self.hparams = hparams
+
+    @override
+    def forward(self, input: OutputHeadInput) -> tc.Float[torch.Tensor, "bsz 3 3"]:
+        predicted_props = input["predicted_props"]
+        if self.hparams.energy_prop_name not in predicted_props:
+            raise ValueError(
+                f"Predicted props does not contain {self.hparams.energy_prop_name}, check energy prop name and make sure energy is predicted before stress."
+            )
+        energy = predicted_props[self.hparams.energy_prop_name]
+        strain = input["data"].strain
+        grad = torch.autograd.grad(
+            energy,
+            [strain],
+            grad_outputs=torch.ones_like(energy),
+            create_graph=self.training,
+        )
+        virial = grad[0]
+        volume = torch.linalg.det(input["data"].cell).abs()
+        # tc.tassert(tc.Float[torch.Tensor, "bsz"], volume)
+        num_graphs = int(torch.max(input["data"].batch).item() + 1)
+        assert volume.shape == (
+            num_graphs,
+        ), f"volume.shape={volume.shape} != {(num_graphs,)}"
+        assert torch.is_floating_point(
+            volume
+        ), f"volume.dtype={volume.dtype}, expected floating point"
+        stress = virial / rearrange(volume, "b -> b 1 1")
+
+        return stress
+
+    @override
+    @contextlib.contextmanager
+    def forward_context(self, data: BaseData):
+        with contextlib.ExitStack() as stack:
+            enable_grad(stack)
+
+            if not data.pos.requires_grad:
+                data.pos.requires_grad_(True)
+
+            num_graphs = int(torch.max(data.batch).item() + 1)
+            data.strain = torch.zeros(
+                (num_graphs, 3, 3),
+                dtype=data.pos.dtype,
+                device=data.pos.device,
+            )
+            data.strain.requires_grad_(True)
+            symmetric_displacement = 0.5 * (data.strain + data.strain.transpose(-1, -2))
+
+            data.pos = data.pos + torch.bmm(
+                data.pos.unsqueeze(-2), symmetric_displacement[data.batch]
+            ).squeeze(-2)
+            data.cell = data.cell + torch.bmm(data.cell, symmetric_displacement)
+
+            yield

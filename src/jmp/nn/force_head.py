@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 from logging import getLogger
 from typing import Literal
 
@@ -7,16 +8,19 @@ import nshconfig as C
 import nshtrainer as nt
 import torch
 import torch.nn as nn
-from jmppeft.modules.torch_scatter_polyfill import scatter
 from torch_geometric.data.data import BaseData
+from torch_scatter import scatter
 from typing_extensions import TypedDict, override
 
 from ..models.gemnet.backbone import GOCBackboneOutput
+from .base import OutputHeadBase, OutputHeadInput, TargetConfigBase
+from .utils.force_scaler import ForceScaler
+from .utils.tensor_grad import enable_grad
 
 log = getLogger(__name__)
 
 
-class ForceTargetConfig(C.Config):
+class ForceTargetConfig(TargetConfigBase):
     reduction: Literal["sum", "mean"] = "sum"
     """
     The reduction method for the target. This refers to how the target is computed.
@@ -39,12 +43,7 @@ class ForceTargetConfig(C.Config):
         )
 
 
-class ForceOutputHeadInput(TypedDict):
-    data: BaseData
-    backbone_output: GOCBackboneOutput
-
-
-class ForceOutputHead(nn.Module):
+class ForceOutputHead(OutputHeadBase):
     @override
     def __init__(
         self,
@@ -64,7 +63,7 @@ class ForceOutputHead(nn.Module):
         )
 
     @override
-    def forward(self, input: ForceOutputHeadInput) -> torch.Tensor:
+    def forward(self, input: OutputHeadInput) -> torch.Tensor:
         data = input["data"]
         backbone_output = input["backbone_output"]
 
@@ -80,3 +79,61 @@ class ForceOutputHead(nn.Module):
             reduce=self.hparams.reduction,
         )
         return output
+
+    @override
+    @contextlib.contextmanager
+    def forward_context(self, data: BaseData):
+        yield
+
+
+class ConservativeForceTargetConfig(TargetConfigBase):
+    energy_prop_name: str = "energy"
+    """The name of the energy property."""
+
+    def create_model(
+        self,
+    ):
+        return ConservativeForceOutputHead(hparams=self)
+
+
+class ConservativeForceOutputHead(OutputHeadBase):
+    @override
+    def __init__(self, hparams: ConservativeForceTargetConfig):
+        super().__init__()
+        self.hparams = hparams
+        self.force_saler = ForceScaler()
+
+    @override
+    def forward(self, input: OutputHeadInput) -> torch.Tensor:
+        predicted_props = input["predicted_props"]
+        if self.hparams.energy_prop_name not in predicted_props:
+            raise ValueError(
+                f"Predicted props does not contain {self.hparams.energy_prop_name}, check energy prop name and make sure energy is predicted before forces."
+            )
+        energy = predicted_props[self.hparams.energy_prop_name]
+        natoms_in_batch = input["data"].pos.shape[0]
+        assert (
+            energy.requires_grad
+        ), "Energy must require grad to compute conservative forces."
+        assert (
+            input["data"].pos.requires_grad
+        ), "Positions must require grad to compute conservative forces."
+        forces = self.force_saler.calc_forces(
+            energy=energy,
+            pos=input["data"].pos,
+        )
+        assert forces.shape == (
+            natoms_in_batch,
+            3,
+        ), f"forces.shape={forces.shape} != [num_nodes_in_batch, 3]"
+        return forces
+
+    @override
+    @contextlib.contextmanager
+    def forward_context(self, data: BaseData):
+        with contextlib.ExitStack() as stack:
+            enable_grad(stack)
+
+            if not data.pos.requires_grad:
+                data.pos.requires_grad = True
+            yield
