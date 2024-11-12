@@ -153,11 +153,7 @@ def predict(data: Batch, lightning_module: Module):
     data.fixed = data.fixed.bool()
 
     # Run the prediction, converting stress to ev/A^3 and using the total energy
-    predictions = lightning_module.predict(
-        data,
-        convert_stress_to_ev_a3=False,
-        energy_kind="total",
-    )
+    predictions = lightning_module.predict(data, energy_kind="total")
 
     # Compute the formation energy per atom from the total energy
     def _composition(data: Batch):

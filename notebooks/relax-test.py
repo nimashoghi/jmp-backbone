@@ -8,8 +8,11 @@ import nshutils as nu
 
 import jmp.configs as jc
 
+# ckpt_path = CE.CachedPath(
+#     uri="hf://nimashoghi/mptrj-alex-omat24-jmp-s-mptrj-salex-finetune-n727oywf/checkpoints/last/epoch7-step143497.ckpt"
+# )
 ckpt_path = CE.CachedPath(
-    uri="hf://nimashoghi/mptrj-alex-omat24-jmp-s-mptrj-salex-finetune-n727oywf/checkpoints/last/epoch2-step57398.ckpt"
+    uri="hf://nimashoghi/mptrj-alex-omat24-jmp-s-t7colwek/checkpoints/last/epoch2-step215414.ckpt"
 )
 
 config = jc.RelaxWBMConfig.draft()
@@ -36,7 +39,7 @@ def update_lm_config(config: jc.Config):
     return config
 
 
-results_dir = Path.cwd() / f"results/{Path(config.ckpt_path.uri).stem}v2"
+results_dir = Path.cwd() / f"results/{Path(config.ckpt_path.uri).stem}pt"
 results_dir.mkdir(parents=True, exist_ok=True)
 distributed_configs = config.subset_(1_000).distributed(1)
 run_args = [(config, results_dir, update_lm_config) for config in distributed_configs]

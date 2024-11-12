@@ -607,14 +607,14 @@ class AintGraphTransformProtocol(Protocol):
 
 
 class GraphComputerConfig(C.Config):
-    cutoffs: CutoffsConfig
-    """The cutoff for the radius graph."""
-
-    max_neighbors: MaxNeighborsConfig
-    """The maximum number of neighbors for the radius graph."""
-
     pbc: bool
     """Whether to use periodic boundary conditions."""
+
+    cutoffs: CutoffsConfig = CutoffsConfig.from_constant(12.0)
+    """The cutoff for the radius graph."""
+
+    max_neighbors: MaxNeighborsConfig = MaxNeighborsConfig.from_goc_base_proportions(30)
+    """The maximum number of neighbors for the radius graph."""
 
     per_graph_radius_graph: bool = False
     """Whether to compute the radius graph per graph."""

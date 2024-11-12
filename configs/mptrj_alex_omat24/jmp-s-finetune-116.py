@@ -29,13 +29,14 @@ trainer_hparams.project = "mptrj-alex-omat24"
 trainer_hparams.primary_metric = nt.configs.MetricConfig(name="energy_mae", mode="min")
 trainer_hparams.val_check_interval = 0.25
 trainer_hparams.precision = "16-mixed-auto"
-trainer_hparams.set_float32_matmul_precision = "medium"
+trainer_hparams.set_float32_matmul_precision = "high"
 trainer_hparams.log_norms = nt.configs.NormLoggingCallbackConfig.draft()
 trainer_hparams.log_norms.log_grad_norm = True
 trainer_hparams.gradient_clipping = nt.configs.GradientClippingConfig(
     value=5.0, algorithm="norm"
 )
 trainer_hparams.hf_hub.enable_()
+# trainer_hparams.callbacks.append(nt.configs.FiniteChecksCallbackConfig())
 trainer_hparams = trainer_hparams.with_project_root(cwd)
 trainer_hparams = trainer_hparams.finalize()
 
@@ -64,9 +65,9 @@ def run(
         hparams.energy_referencer = jc.PerAtomReferencerConfig.linear_reference(
             "mptrj-salex"
         )
-        hparams.targets.energy_loss_coefficient = 1.0
-        hparams.targets.force_loss_coefficient = 10.0
-        hparams.targets.stress_loss_coefficient = 100.0
+        hparams.targets.energy_loss_coefficient = 20
+        hparams.targets.force_loss_coefficient = 20
+        hparams.targets.stress_loss_coefficient = 5
 
         optimization = jc.OptimizationConfig.draft()
         optimization.optimizer = nt.configs.AdamWConfig(lr=2.0e-4, weight_decay=0.01)
@@ -80,6 +81,19 @@ def run(
             min_lr_factor=0.1,
         )
         hparams.optimization = optimization.finalize()
+
+        """From OMAT24 checkpoints:
+        {'forces': OrderedDict([('mean', tensor(0.)), ('rmsd', tensor(1.0920))]),
+ 'stress_isotropic': OrderedDict([('mean', tensor(-0.0063)),
+              ('rmsd', tensor(0.1035))]),
+ 'stress_anisotropic': OrderedDict([('mean', tensor(-1.0521e-05)),
+              ('rmsd', tensor(0.0363))])}
+        """
+        hparams.normalization = {
+            "forces": jc.NormalizationConfig(mean=0.0, rmsd=1.0920),
+            "stress_isotropic": jc.NormalizationConfig(mean=-0.0063, rmsd=0.1035),
+            "stress_anisotropic": jc.NormalizationConfig(mean=-1.0521e-05, rmsd=0.0363),
+        }
 
         return hparams
 

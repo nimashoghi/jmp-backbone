@@ -10,11 +10,35 @@ import nshconfig as C
 import nshtrainer as nt
 import numpy as np
 import torch
+from fairchem.core.common.utils import cg_change_mat, irreps_sum
 from torch.utils.data import DataLoader, Dataset
 from torch_geometric.data import Batch, Data
 from typing_extensions import override
 
 log = logging.getLogger(__name__)
+
+
+def decompose_tensor(stress):
+    tensor_decomposition = torch.einsum(
+        "ab, cb->ca",
+        cg_change_mat(2),
+        stress.reshape(1, irreps_sum(2)),
+    )
+
+    isotropic_irrep_dim = 0
+    isotropic = tensor_decomposition[
+        :, max(0, irreps_sum(isotropic_irrep_dim - 1)) : irreps_sum(isotropic_irrep_dim)
+    ]
+
+    anisotropic_irrep_dim = 2
+    anisotropic = tensor_decomposition[
+        :,
+        max(0, irreps_sum(anisotropic_irrep_dim - 1)) : irreps_sum(
+            anisotropic_irrep_dim
+        ),
+    ]
+
+    return isotropic, anisotropic
 
 
 class DatasetConfig(C.Config):
@@ -225,6 +249,12 @@ class MPTrjAlexOMAT24Dataset(Dataset, nt.data.balanced_batch_sampler.DatasetWith
             data.tags = torch.full_like(data.atomic_numbers, 2, dtype=torch.long)
         if "fixed" not in data:
             data.fixed = torch.zeros_like(data.atomic_numbers, dtype=torch.bool)
+
+        # If stress is set, also decompose it
+        if (stress := data.get("stress")) is not None:
+            isotropic, anisotropic = decompose_tensor(stress)
+            data.stress_isotropic = isotropic
+            data.stress_anisotropic = anisotropic
 
         return data
 
