@@ -10,11 +10,11 @@ import nshutils.typecheck as tc
 import torch
 import torch.nn as nn
 from einops import rearrange
-from jmppeft.modules.torch_scatter_polyfill import scatter
 from torch_geometric.data.data import BaseData
 from typing_extensions import TypedDict, override
 
 from ..models.gemnet.backbone import GOCBackboneOutput
+from ..models.gemnet.torch_scatter_polyfill import scatter
 from .base import OutputHeadBase, OutputHeadInput, TargetConfigBase
 
 log = getLogger(__name__)
