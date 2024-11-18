@@ -101,7 +101,7 @@ class _Rank2DecompositionEdgeBlock(nn.Module):
         idx_t: tc.Int[torch.Tensor, "num_edges"],
         batch_idx: tc.Int[torch.Tensor, "num_nodes"],
         batch_size: int,
-        return_decomposed: bool = True,
+        return_decomposed: bool = False,
     ):
         """evaluate
         Parameters
