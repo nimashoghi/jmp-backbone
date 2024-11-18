@@ -286,7 +286,7 @@ class StressOutputHead(OutputHeadBase):
     def forward(
         self,
         input: OutputHeadInput,
-        return_decomposed: bool = True,
+        return_decomposed: bool = False,
     ) -> tc.Float[torch.Tensor, "bsz 3 3"]:
         return self.block(
             input["backbone_output"]["forces"],
