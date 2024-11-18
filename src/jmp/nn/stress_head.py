@@ -15,6 +15,7 @@ from typing_extensions import TypedDict, assert_never, override
 
 from ..models.gemnet.backbone import GOCBackboneOutput
 from .base import OutputHeadBase, OutputHeadInput, TargetConfigBase
+from .utils.force_scaler import ForceStressScaler
 from .utils.tensor_grad import enable_grad
 
 
@@ -284,7 +285,7 @@ class StressOutputHead(OutputHeadBase):
     @override
     def forward(
         self,
-        input: StressOutputHeadInput,
+        input: OutputHeadInput,
         return_decomposed: bool = True,
     ) -> tc.Float[torch.Tensor, "bsz 3 3"]:
         return self.block(
@@ -300,7 +301,7 @@ class StressOutputHead(OutputHeadBase):
     @contextlib.contextmanager
     def forward_context(self, data: BaseData):
         yield
-        
+
     def combine_scalar_irrep2(self, scalar, irrep2):
         return self.block.combine_scalar_irrep2(scalar, irrep2)
 
@@ -325,6 +326,7 @@ class ConservativeStressOutputHead(OutputHeadBase):
     ):
         super().__init__()
         self.hparams = hparams
+        self.force_stress_scaler = ForceStressScaler()
 
     @override
     def forward(self, input: OutputHeadInput) -> tc.Float[torch.Tensor, "bsz 3 3"]:
@@ -335,24 +337,12 @@ class ConservativeStressOutputHead(OutputHeadBase):
             )
         energy = predicted_props[self.hparams.energy_prop_name]
         strain = input["data"].strain
-        grad = torch.autograd.grad(
-            energy,
-            [strain],
-            grad_outputs=torch.ones_like(energy),
-            create_graph=self.training,
+        cell = input["data"].cell
+        pos = input["data"].pos
+        forces, stress = self.force_stress_scaler.calc_forces_and_update(
+            energy, pos, strain, cell
         )
-        virial = grad[0]
-        volume = torch.linalg.det(input["data"].cell).abs()
-        # tc.tassert(tc.Float[torch.Tensor, "bsz"], volume)
-        num_graphs = int(torch.max(input["data"].batch).item() + 1)
-        assert volume.shape == (
-            num_graphs,
-        ), f"volume.shape={volume.shape} != {(num_graphs,)}"
-        assert torch.is_floating_point(
-            volume
-        ), f"volume.dtype={volume.dtype}, expected floating point"
-        stress = virial / rearrange(volume, "b -> b 1 1")
-
+        input["predicted_props"]["_stress_precomputed_forces"] = forces
         return stress
 
     @override

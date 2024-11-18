@@ -105,28 +105,31 @@ class ConservativeForceOutputHead(OutputHeadBase):
 
     @override
     def forward(self, input: OutputHeadInput) -> torch.Tensor:
-        predicted_props = input["predicted_props"]
-        if self.hparams.energy_prop_name not in predicted_props:
-            raise ValueError(
-                f"Predicted props does not contain {self.hparams.energy_prop_name}, check energy prop name and make sure energy is predicted before forces."
+        if "_stress_precomputed_forces" in input["predicted_props"]:
+            return input["predicted_props"]["_stress_precomputed_forces"]
+        else:
+            predicted_props = input["predicted_props"]
+            if self.hparams.energy_prop_name not in predicted_props:
+                raise ValueError(
+                    f"Predicted props does not contain {self.hparams.energy_prop_name}, check energy prop name and make sure energy is predicted before forces."
+                )
+            energy = predicted_props[self.hparams.energy_prop_name]
+            natoms_in_batch = input["data"].pos.shape[0]
+            assert (
+                energy.requires_grad
+            ), "Energy must require grad to compute conservative forces."
+            assert (
+                input["data"].pos.requires_grad
+            ), "Positions must require grad to compute conservative forces."
+            forces = self.force_saler.calc_forces(
+                energy=energy,
+                pos=input["data"].pos,
             )
-        energy = predicted_props[self.hparams.energy_prop_name]
-        natoms_in_batch = input["data"].pos.shape[0]
-        assert (
-            energy.requires_grad
-        ), "Energy must require grad to compute conservative forces."
-        assert (
-            input["data"].pos.requires_grad
-        ), "Positions must require grad to compute conservative forces."
-        forces = self.force_saler.calc_forces(
-            energy=energy,
-            pos=input["data"].pos,
-        )
-        assert forces.shape == (
-            natoms_in_batch,
-            3,
-        ), f"forces.shape={forces.shape} != [num_nodes_in_batch, 3]"
-        return forces
+            assert forces.shape == (
+                natoms_in_batch,
+                3,
+            ), f"forces.shape={forces.shape} != [num_nodes_in_batch, 3]"
+            return forces
 
     @override
     @contextlib.contextmanager

@@ -19,7 +19,7 @@ conda install -y -c conda-forge -c pytorch -c nvidia -c pyg \
     frozendict wrapt varname typing-extensions lovely-tensors lovely-numpy requests pytest nbval
 
 # Rich for better terminal output
-pip install rich lmdb ase pymatgen matbench-discovery beartype jaxtyping
+pip install rich lmdb ase pymatgen matbench-discovery beartype jaxtyping e3nn
 ```
 
 And then clone this repo and run:
