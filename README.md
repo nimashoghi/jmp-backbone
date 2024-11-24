@@ -5,8 +5,8 @@ This is the refined code implementation of the ICLR 2024 poster paper [From Mole
 ## Installation
 
 ```bash
-conda create -n jmp-peft python=3.11 -y
-conda activate jmp-peft
+conda create -n jmp python=3.11 -y
+conda activate jmp
 
 # Install PyTorch
 conda install -y -c conda-forge -c pytorch -c nvidia -c pyg \
