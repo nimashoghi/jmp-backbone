@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 from logging import getLogger
 from typing import Literal
 
@@ -9,21 +10,17 @@ import nshutils.typecheck as tc
 import torch
 import torch.nn as nn
 from einops import rearrange
-from jmppeft.modules.torch_scatter_polyfill import scatter
 from torch_geometric.data.data import BaseData
 from typing_extensions import TypedDict, override
 
 from ..models.gemnet.backbone import GOCBackboneOutput
+from ..models.gemnet.torch_scatter_polyfill import scatter
+from .base import OutputHeadBase, OutputHeadInput, TargetConfigBase
 
 log = getLogger(__name__)
 
 
-class OutputHeadInput(TypedDict):
-    data: BaseData
-    backbone_output: GOCBackboneOutput
-
-
-class EnergyTargetConfig(C.Config):
+class EnergyTargetConfig(TargetConfigBase):
     max_atomic_number: int
     """The max atomic number in the dataset."""
 
@@ -50,7 +47,7 @@ class EnergyTargetConfig(C.Config):
         )
 
 
-class EnergyOutputHead(nn.Module):
+class EnergyOutputHead(OutputHeadBase):
     @override
     def __init__(
         self,
@@ -160,3 +157,8 @@ class EnergyOutputHead(nn.Module):
 
         per_system_energies = rearrange(per_system_energies, "b 1 -> b")
         return per_system_energies
+
+    @override
+    @contextlib.contextmanager
+    def forward_context(self, data: BaseData):
+        yield
