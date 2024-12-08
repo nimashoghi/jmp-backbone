@@ -14,11 +14,11 @@ import nshconfig as C
 import numpy as np
 import torch
 import torch.nn as nn
-from jmppeft.modules.torch_scatter_polyfill import segment_coo
 from torch_geometric.data.batch import Batch
 from torch_geometric.data.data import BaseData
 from torch_geometric.nn import radius_graph
 from torch_geometric.utils import sort_edge_index
+from torch_scatter import segment_coo
 from typing_extensions import NotRequired, override
 
 from .radius_graph import get_pbc_distances, radius_graph_pbc
