@@ -22,6 +22,7 @@ from torch_scatter import segment_coo
 from typing_extensions import NotRequired, override
 
 from .radius_graph import get_pbc_distances, radius_graph_pbc
+from .torch_scatter_polyfill import segment_coo
 from .utils import get_edge_id, get_max_neighbors_mask, mask_neighbors, repeat_blocks
 
 if TYPE_CHECKING:
