@@ -11,6 +11,7 @@ from __future__ import annotations
 import numpy as np
 import sympy as sym
 import torch
+import math
 from scipy import special as sp
 from scipy.optimize import brentq
 
@@ -115,8 +116,8 @@ def sph_harm_prefactor(l_degree, m_order):
     return (
         (2 * l_degree + 1)
         / (4 * np.pi)
-        * np.math.factorial(l_degree - abs(m_order))
-        / np.math.factorial(l_degree + abs(m_order))
+        * math.factorial(l_degree - abs(m_order))
+        / math.factorial(l_degree + abs(m_order))
     ) ** 0.5
 
 
