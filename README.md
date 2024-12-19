@@ -16,7 +16,8 @@ conda install -y -c conda-forge -c pytorch -c nvidia -c pyg \
     pytorch-lightning torchmetrics lightning \
     einops wandb \
     cloudpickle pydantic \
-    frozendict wrapt varname typing-extensions lovely-tensors lovely-numpy requests pytest nbval
+    frozendict wrapt varname typing-extensions lovely-tensors lovely-numpy requests pytest nbval \
+    torch-geometric torch-scatter torch-sparse
 
 # Rich for better terminal output
 pip install rich lmdb ase pymatgen matbench-discovery beartype jaxtyping e3nn
