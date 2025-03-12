@@ -5,6 +5,9 @@ description = "Add a short description here"
 authors = [{ name = "Nima Shoghi", email = "nimashoghi@gmail.com" }]
 requires-python = ">= 3.10"
 
+[tool.poetry]
+include = ["jmp/**/*.pt"]  # Include scale files
+
 [tool.pyright]
 typeCheckingMode = "standard"
 deprecateTypingAliases = true
